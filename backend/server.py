@@ -25,8 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API Key from environment or default
-API_KEY = os.getenv("GRAPHON_API_KEY", "lgo_TpjSVvyqQ4xSgsyVg5_cTQSLom-DX_VfZKhasRLW7nOEoP1THakXpeHmw-WUnuCVc")
+# API Key from environment variable (required)
+API_KEY = os.getenv("GRAPHON_API_KEY")
+if not API_KEY:
+    print("⚠️  WARNING: GRAPHON_API_KEY not set. Set it in backend/.env or as environment variable.")
+    API_KEY = ""  # Will fail gracefully when used
 
 # Store group_id in memory (for hackathon - in production use DB)
 CURRENT_GROUP_ID: Optional[str] = None
