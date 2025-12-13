@@ -1,5 +1,5 @@
 
-# HIVE_MIND // COGNITIVE ACCELERATOR
+# betterSearch // AI KNOWLEDGE BASE
 
 ![Status](https://img.shields.io/badge/SYSTEM-OPERATIONAL-emerald?style=for-the-badge)
 ![Privacy](https://img.shields.io/badge/DATA-LOCAL_ENCRYPTED-white?style=for-the-badge)
@@ -7,7 +7,7 @@
 
 > **"Don't just study. Upload knowledge."**
 
-**HiveMind** is a specialized Neural Interface designed for students and researchers. Unlike standard chatbots, HiveMind acts as a recursive learning environment. It combines multi-model orchestration, real-time schematic visualization, and a Socratic teaching engine to transform abstract confusion into structural mastery.
+**betterSearch** is a specialized Neural Interface designed for students and researchers. Unlike standard chatbots, betterSearch acts as a recursive learning environment. It combines multi-model orchestration, real-time schematic visualization, and a Socratic teaching engine to transform abstract confusion into structural mastery.
 
 ---
 
@@ -19,7 +19,7 @@ Switch instantly between two distinct interaction protocols:
 *   **SOCRATIC Mode (`?`)**: A pedagogical engine. The AI **refuses** to give direct answers. Instead, it guides you through questioning, identifies gaps in your logic, validates prerequisites, and forces you to derive the solution yourself.
 
 ### 🎨 Dynamic Schematic Rendering
-HiveMind understands that text is often insufficient for complex systems.
+betterSearch understands that text is often insufficient for complex systems.
 *   **Auto-Visualization**: If a topic involves architecture, flows, or systems (e.g., "The Krebs Cycle", "HTTP Handshake"), the AI generates raw SVG blueprints in real-time.
 *   **Interactive View**: Click any generated schematic to enter **Full-Scale Rendering Mode** for a distraction-free inspection.
 
@@ -38,7 +38,7 @@ Turn your scattered notes into a structured curriculum.
 ### 🎯 AI-Generated Assessment
 Test your retention immediately.
 *   Select any topic from your Syllabus.
-*   HiveMind reads your specific notes on that topic.
+*   betterSearch reads your specific notes on that topic.
 *   It generates a custom **Multiple Choice Assessment** to verify your understanding, complete with explanations for every answer.
 
 ### 📂 Neural Archives (Notes System)
@@ -52,7 +52,7 @@ Test your retention immediately.
 ## 🛠️ TECHNICAL ARCHITECTURE
 
 ### Multi-Provider Orchestration
-HiveMind is model-agnostic. Configure your "Neural Link" to use:
+betterSearch is model-agnostic. Configure your "Neural Link" to use:
 1.  **Google Gemini**: (Default) Supports *Thinking* models for deep reasoning and *Flash* for speed.
 2.  **OpenAI**: GPT-4o integration.
 3.  **Anthropic**: Claude 3.5 Sonnet integration.
@@ -86,18 +86,12 @@ Designed for deep work and low eye strain.
 
 ### Installation
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/your-username/hivemind.git
-    cd hivemind
-    ```
-
-2.  **Install Dependencies**
+1.  **Install Dependencies**
     ```bash
     npm install
     ```
 
-3.  **Initialize System**
+2.  **Initialize System**
     ```bash
     npm start
     ```
@@ -126,4 +120,4 @@ Designed for deep work and low eye strain.
 
 ---
 
-**HiveMind** // *Upgrade your cognitive stack.*
+**betterSearch** // *Upgrade your cognitive stack.*
