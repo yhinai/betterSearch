@@ -2,6 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { MODELS, PROVIDERS, SVG_SYSTEM_INSTRUCTION, SOCRATIC_SYSTEM_INSTRUCTION, MODES } from '../constants';
 import { Message, AppConfig, Note, Attachment } from '../types';
+import { queryGraphon, formatGraphonSources } from './graphonBridge';
 
 export const streamResponse = async (
   config: AppConfig,
@@ -10,6 +11,32 @@ export const streamResponse = async (
   onChunk: (text: string) => void,
   signal?: AbortSignal
 ) => {
+  // Check if Knowledge Graph mode is enabled
+  if (config.useGraphon) {
+    try {
+      onChunk("🧠 *Accessing Neural Graph...*\n\n");
+
+      const graphonResponse = await queryGraphon(prompt, config.graphonGroupId);
+
+      // Stream the Graphon answer
+      onChunk(graphonResponse.answer);
+
+      // Add formatted sources
+      const sourcesText = formatGraphonSources(graphonResponse.sources);
+      if (sourcesText) {
+        onChunk(sourcesText);
+      }
+
+      return; // Knowledge mode complete, don't call regular LLM
+
+    } catch (e) {
+      const error = e as Error;
+      onChunk(`\n\n⚠️ *Knowledge Graph Error: ${error.message}*\n*Falling back to standard model...*\n\n`);
+      // Fall through to regular LLM call
+    }
+  }
+
+  // Regular LLM routing
   switch (config.provider) {
     case PROVIDERS.OPENAI:
       await callOpenAI(config, history, prompt, onChunk, signal);
@@ -67,20 +94,20 @@ export const processDocument = async (config: AppConfig, attachment: Attachment)
       config: { responseMimeType: "application/json" }
     });
     return parseResponse(response.text || '');
-  } 
-  
+  }
+
   if (config.provider === PROVIDERS.ANTHROPIC) {
     // Anthropic supports PDF and Image in messages
     const content: any[] = [];
     if (attachment.type === 'image') {
-       content.push({ type: "image", source: { type: "base64", media_type: attachment.mimeType, data: attachment.data } });
+      content.push({ type: "image", source: { type: "base64", media_type: attachment.mimeType, data: attachment.data } });
     } else {
-       // Anthropic PDF (Beta) - often requires specific handling or converting to image for stability in some SDKs,
-       // but here we can try the document block if valid, otherwise fallback.
-       content.push({ 
-           type: "document", 
-           source: { type: "base64", media_type: attachment.mimeType, data: attachment.data } 
-       });
+      // Anthropic PDF (Beta) - often requires specific handling or converting to image for stability in some SDKs,
+      // but here we can try the document block if valid, otherwise fallback.
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: attachment.mimeType, data: attachment.data }
+      });
     }
     content.push({ type: "text", text: prompt });
 
@@ -104,25 +131,25 @@ export const processDocument = async (config: AppConfig, attachment: Attachment)
 
   // Fallback for OpenAI (Image only) or others
   if (attachment.type === 'image' && config.provider === PROVIDERS.OPENAI) {
-     const response = await fetch(`${config.baseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
-        },
-        body: JSON.stringify({
-          model: config.model || 'gpt-4o',
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: `data:${attachment.mimeType};base64,${attachment.data}` } }
-            ]
-          }]
-        })
-      });
-      const json = await response.json();
-      return parseResponse(json.choices?.[0]?.message?.content || '');
+    const response = await fetch(`${config.baseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model || 'gpt-4o',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: `data:${attachment.mimeType};base64,${attachment.data}` } }
+          ]
+        }]
+      })
+    });
+    const json = await response.json();
+    return parseResponse(json.choices?.[0]?.message?.content || '');
   }
 
   throw new Error("Provider does not support this file type for extraction. Please use Google Gemini.");
@@ -130,7 +157,7 @@ export const processDocument = async (config: AppConfig, attachment: Attachment)
 
 export const generateTitle = async (config: AppConfig, content: string): Promise<string> => {
   const prompt = `Generate a very concise title (3-5 words maximum) for the following text. Do not use quotes or markdown. Text: ${content.substring(0, 500)}`;
-  
+
   let fullText = "";
   const onChunk = (text: string) => { fullText += text; };
 
@@ -169,11 +196,11 @@ export const generateSyllabus = async (config: AppConfig, notes: Note[], onChunk
   }
 
   const notesList = notes.map(n => `- Title: ${n.title}\n  Excerpt: ${n.content.substring(0, 100)}...`).join('\n');
-  
+
   let prompt = '';
 
   if (currentSyllabusJson) {
-      prompt = `
+    prompt = `
         You are a Curriculum Architect. 
         You have an EXISTING Syllabus Structure and a list of student notes (some might be new).
         
@@ -192,7 +219,7 @@ export const generateSyllabus = async (config: AppConfig, notes: Note[], onChunk
         ${notesList}
       `;
   } else {
-      prompt = `
+    prompt = `
         You are a Curriculum Architect. 
         Analyze the following list of student notes and organize them into a structured Study Syllabus.
         
@@ -220,11 +247,11 @@ export const generateSyllabus = async (config: AppConfig, notes: Note[], onChunk
   }
 
   const syllabusConfig = { ...config, systemInstruction: "You are an expert academic curriculum designer. You speak only JSON." };
-  
+
   if (config.provider === PROVIDERS.GOOGLE) {
     syllabusConfig.model = MODELS.FAST;
   }
-  
+
   switch (config.provider) {
     case PROVIDERS.OPENAI:
       await callOpenAI(syllabusConfig, [], prompt, onChunk);
@@ -244,8 +271,8 @@ export const generateSyllabus = async (config: AppConfig, notes: Note[], onChunk
 
 export const generateAssessment = async (config: AppConfig, topic: string, notes: Note[], onChunk: (text: string) => void) => {
   const relevantNotes = notes
-    .filter(n => 
-      n.title.toLowerCase().includes(topic.toLowerCase()) || 
+    .filter(n =>
+      n.title.toLowerCase().includes(topic.toLowerCase()) ||
       n.content.toLowerCase().includes(topic.toLowerCase())
     )
     .slice(0, 5)
@@ -275,7 +302,7 @@ export const generateAssessment = async (config: AppConfig, topic: string, notes
   `;
 
   const quizConfig = { ...config, systemInstruction: "You are an expert examiner. You output strictly valid JSON arrays of questions." };
-  
+
   if (config.provider === PROVIDERS.GOOGLE) {
     quizConfig.model = MODELS.FAST;
   }
@@ -322,34 +349,34 @@ const getSystemInstruction = (config: AppConfig) => {
 
 const callGoogle = async (config: AppConfig, history: Message[], prompt: string, onChunk: (text: string) => void, signal?: AbortSignal) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+
   let previousHistory = history;
   let currentAttachments: Attachment[] | undefined;
 
   if (history.length > 0) {
-      const lastMsg = history[history.length - 1];
-      if (lastMsg.role === 'user') {
-          previousHistory = history.slice(0, -1);
-          currentAttachments = lastMsg.attachments;
-      }
+    const lastMsg = history[history.length - 1];
+    if (lastMsg.role === 'user') {
+      previousHistory = history.slice(0, -1);
+      currentAttachments = lastMsg.attachments;
+    }
   }
 
   const chatSession = ai.chats.create({
     model: config.model || MODELS.THINKING,
     config: { systemInstruction: getSystemInstruction(config) },
     history: previousHistory.filter(m => m.role !== 'system').map(m => {
-       const parts: any[] = [{ text: m.text }];
-       if (m.attachments) {
-         m.attachments.forEach(att => {
-           parts.push({
-             inlineData: {
-               mimeType: att.mimeType,
-               data: att.data
-             }
-           });
-         });
-       }
-       return { role: m.role, parts };
+      const parts: any[] = [{ text: m.text }];
+      if (m.attachments) {
+        m.attachments.forEach(att => {
+          parts.push({
+            inlineData: {
+              mimeType: att.mimeType,
+              data: att.data
+            }
+          });
+        });
+      }
+      return { role: m.role, parts };
     })
   });
 
@@ -368,7 +395,7 @@ const callGoogle = async (config: AppConfig, history: Message[], prompt: string,
   // Google GenAI iterator does not take signal directly in sendMessageStream types for this SDK wrapper usually,
   // but we can break the loop.
   const result = await chatSession.sendMessageStream({ message: { parts } });
-  
+
   for await (const chunk of result) {
     if (signal?.aborted) break;
     if (chunk.text) onChunk(chunk.text);
@@ -404,7 +431,7 @@ const callOpenAI = async (config: AppConfig, history: Message[], prompt: string,
     },
     body: JSON.stringify({
       model: config.model || 'gpt-4o',
-      messages: messages, 
+      messages: messages,
       stream: true
     }),
     signal
@@ -431,11 +458,11 @@ const callOllama = async (config: AppConfig, history: Message[], prompt: string,
     ...(history.slice(0, -1).length > 0 ? [{ role: 'system', content: getSystemInstruction(config) }] : []),
     ...(config.systemInstruction ? [{ role: 'system', content: config.systemInstruction }] : []),
     ...history.map(m => {
-        const msgObj: any = { role: m.role === 'model' ? 'assistant' : 'user', content: m.text };
-        if (m.attachments && m.attachments.length > 0) {
-            msgObj.images = m.attachments.filter(a => a.type === 'image').map(a => a.data);
-        }
-        return msgObj;
+      const msgObj: any = { role: m.role === 'model' ? 'assistant' : 'user', content: m.text };
+      if (m.attachments && m.attachments.length > 0) {
+        msgObj.images = m.attachments.filter(a => a.type === 'image').map(a => a.data);
+      }
+      return msgObj;
     }),
     { role: 'user', content: prompt }
   ];
@@ -464,38 +491,38 @@ const callOllama = async (config: AppConfig, history: Message[], prompt: string,
 const callAnthropic = async (config: AppConfig, history: Message[], prompt: string, onChunk: (text: string) => void, signal?: AbortSignal) => {
   const correctedHistory = [...history];
   if (correctedHistory.length > 0 && correctedHistory[0].role === 'model') {
-      correctedHistory.unshift({
-          id: 'system_injection', 
-          role: 'user', 
-          text: 'Context: Continuing conversation from the following previous output.' 
-      });
+    correctedHistory.unshift({
+      id: 'system_injection',
+      role: 'user',
+      text: 'Context: Continuing conversation from the following previous output.'
+    });
   }
 
   const anthropicMessages = [
-      ...correctedHistory.map(m => {
-        const content: any[] = [];
-        if (m.attachments) {
-            m.attachments.forEach(att => {
-                if (att.type === 'image') {
-                    content.push({
-                        type: "image",
-                        source: {
-                            type: "base64",
-                            media_type: att.mimeType,
-                            data: att.data
-                        }
-                    });
-                }
+    ...correctedHistory.map(m => {
+      const content: any[] = [];
+      if (m.attachments) {
+        m.attachments.forEach(att => {
+          if (att.type === 'image') {
+            content.push({
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: att.mimeType,
+                data: att.data
+              }
             });
-        }
-        if (m.text) content.push({ type: "text", text: m.text });
-        
-        return { 
-            role: m.role === 'model' ? 'assistant' : 'user', 
-            content: content 
-        };
-      }),
-      { role: 'user', content: prompt }
+          }
+        });
+      }
+      if (m.text) content.push({ type: "text", text: m.text });
+
+      return {
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: content
+      };
+    }),
+    { role: 'user', content: prompt }
   ];
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {

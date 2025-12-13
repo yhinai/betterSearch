@@ -399,6 +399,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           {config.model === MODELS.GEMINI_3 ? 'G-3.0 PRO' : 'G-2.5 FLASH'}
         </button>
 
+        {/* Knowledge Mode Toggle */}
+        <button
+          onClick={() => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon }))}
+          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
+          style={{
+            backgroundColor: config.useGraphon ? 'var(--accent-cyan-bg)' : 'var(--bg-primary)',
+            color: config.useGraphon ? 'var(--accent-cyan)' : 'var(--text-tertiary)',
+            borderColor: config.useGraphon ? 'var(--accent-cyan)' : 'var(--border-primary)',
+            boxShadow: config.useGraphon ? '0 0 10px rgba(34,211,238,0.3)' : 'none'
+          }}
+          title="Toggle Knowledge Graph Mode (uses your uploaded documents)"
+        >
+          <i className={`fa-solid fa-brain ${config.useGraphon ? 'animate-pulse' : ''}`}></i>
+          <span className="hidden md:inline">KNOWLEDGE</span>
+        </button>
+
         <button
           onClick={handleNewSession}
           className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center justify-center border px-3 py-1.5 transition-all w-10 hover:opacity-80"

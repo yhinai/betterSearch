@@ -36,6 +36,8 @@ export interface AppConfig {
   model: string;
   mode: string;
   systemInstruction?: string;
+  useGraphon?: boolean;  // Enable Knowledge Graph mode
+  graphonGroupId?: string;  // Active Graphon group ID
 }
 
 export interface QuizQuestion {
