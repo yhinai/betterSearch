@@ -51,12 +51,10 @@ Test your retention immediately.
 
 ## 🛠️ TECHNICAL ARCHITECTURE
 
-### Multi-Provider Orchestration
-betterSearch is model-agnostic. Configure your "Neural Link" to use:
-1.  **Google Gemini**: (Default) Supports *Thinking* models for deep reasoning and *Flash* for speed.
-2.  **OpenAI**: GPT-4o integration.
-3.  **Anthropic**: Claude 3.5 Sonnet integration.
-4.  **Ollama**: Full offline support for local Llama 3 models.
+### AI Engine
+betterSearch is powered by **Google Gemini**:
+*   **Gemini 2.5 Flash**: Fast responses for everyday queries
+*   **Gemini 3.0 Pro**: Deep reasoning for complex problems
 
 ### Local-First Database
 *   **Zero Latency**: Powered by **AlaSQL** (In-Memory SQL Database).
