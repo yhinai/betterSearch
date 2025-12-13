@@ -10,6 +10,13 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load from backend/.env
+except ImportError:
+    pass  # python-dotenv not installed, use system env vars
+
 app = FastAPI(
     title="Neural Bridge",
     description="betterSearch - Graphon.ai Integration Server",
@@ -187,18 +194,19 @@ async def query_knowledge(
             return_source_data=True
         )
         
-        # Convert sources to our format
+        # Convert sources to our format (sources are dicts per SDK docs)
         sources = []
         if hasattr(response, 'sources') and response.sources:
             for src in response.sources:
+                # Sources are dicts, use .get() for safety
                 sources.append(Source(
-                    node_type=getattr(src, 'node_type', 'document'),
-                    video_name=getattr(src, 'video_name', None),
-                    start_time=getattr(src, 'start_time', None),
-                    end_time=getattr(src, 'end_time', None),
-                    pdf_name=getattr(src, 'pdf_name', None),
-                    page_num=getattr(src, 'page_num', None),
-                    text=getattr(src, 'text', None)
+                    node_type=src.get('node_type', 'document'),
+                    video_name=src.get('video_name'),
+                    start_time=src.get('start_time'),
+                    end_time=src.get('end_time'),
+                    pdf_name=src.get('pdf_name'),
+                    page_num=src.get('page_num'),
+                    text=src.get('text')
                 ))
         
         return QueryResponse(
