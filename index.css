@@ -1,0 +1,358 @@
+/* betterSearch Theme System */
+
+:root {
+  /* Transition for smooth theme switching */
+  --theme-transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ===== DARK THEME (Default) ===== */
+.theme-dark {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #141414;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.1);
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-tertiary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-disabled: rgba(255, 255, 255, 0.2);
+
+  --border-primary: rgba(255, 255, 255, 0.2);
+  --border-secondary: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.4);
+  --border-focus: rgba(255, 255, 255, 0.6);
+
+  --accent-cyan: #22d3ee;
+  --accent-cyan-bg: rgba(34, 211, 238, 0.1);
+  --accent-purple: #a855f7;
+  --accent-purple-bg: rgba(168, 85, 247, 0.1);
+  --accent-amber: #f59e0b;
+  --accent-red: #ef4444;
+  --accent-red-bg: rgba(239, 68, 68, 0.1);
+  --accent-green: #22c55e;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(255, 255, 255, 0.05);
+
+  --gradient-primary: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
+  --gradient-glow: radial-gradient(circle, rgba(255, 255, 255, 0.05), transparent);
+}
+
+/* ===== LIGHT THEME ===== */
+.theme-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.08);
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary: #64748b;
+  --text-muted: #94a3b8;
+  --text-disabled: #cbd5e1;
+
+  --border-primary: rgba(0, 0, 0, 0.15);
+  --border-secondary: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.25);
+  --border-focus: rgba(0, 0, 0, 0.4);
+
+  --accent-cyan: #0891b2;
+  --accent-cyan-bg: rgba(8, 145, 178, 0.1);
+  --accent-purple: #7c3aed;
+  --accent-purple-bg: rgba(124, 58, 237, 0.1);
+  --accent-amber: #d97706;
+  --accent-red: #dc2626;
+  --accent-red-bg: rgba(220, 38, 38, 0.1);
+  --accent-green: #16a34a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(0, 0, 0, 0.03);
+
+  --gradient-primary: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.1), transparent);
+  --gradient-glow: radial-gradient(circle, rgba(0, 0, 0, 0.02), transparent);
+}
+
+/* ===== BASE STYLES ===== */
+html,
+body {
+  transition: var(--theme-transition);
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+/* Backgrounds */
+.bg-theme-primary {
+  background-color: var(--bg-primary);
+}
+
+.bg-theme-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.bg-theme-tertiary {
+  background-color: var(--bg-tertiary);
+}
+
+.bg-theme-elevated {
+  background-color: var(--bg-elevated);
+}
+
+.bg-theme-hover {
+  background-color: var(--bg-hover);
+}
+
+/* Text */
+.text-theme-primary {
+  color: var(--text-primary);
+}
+
+.text-theme-secondary {
+  color: var(--text-secondary);
+}
+
+.text-theme-tertiary {
+  color: var(--text-tertiary);
+}
+
+.text-theme-muted {
+  color: var(--text-muted);
+}
+
+/* Borders */
+.border-theme-primary {
+  border-color: var(--border-primary);
+}
+
+.border-theme-secondary {
+  border-color: var(--border-secondary);
+}
+
+/* Accents */
+.text-accent-cyan {
+  color: var(--accent-cyan);
+}
+
+.bg-accent-cyan {
+  background-color: var(--accent-cyan-bg);
+}
+
+.text-accent-purple {
+  color: var(--accent-purple);
+}
+
+.text-accent-amber {
+  color: var(--accent-amber);
+}
+
+.text-accent-red {
+  color: var(--accent-red);
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px var(--accent-cyan);
+  }
+
+  50% {
+    box-shadow: 0 0 20px var(--accent-cyan);
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-hover) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+/* ===== COMPONENT OVERRIDES ===== */
+
+/* Buttons with theme support */
+.btn-theme-primary {
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
+  border: 1px solid var(--text-primary);
+  transition: var(--theme-transition);
+}
+
+.btn-theme-primary:hover {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.btn-theme-secondary {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  transition: var(--theme-transition);
+}
+
+.btn-theme-secondary:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background-color: var(--bg-hover);
+}
+
+/* Input fields */
+.input-theme {
+  background-color: var(--bg-hover);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-primary);
+  transition: var(--theme-transition);
+}
+
+.input-theme:focus {
+  border-color: var(--border-focus);
+  outline: none;
+}
+
+.input-theme::placeholder {
+  color: var(--text-disabled);
+}
+
+/* Modal overlays */
+.modal-overlay {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.theme-light .modal-overlay {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollbar styling */
+.theme-dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.theme-light ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-light ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Selection */
+.theme-dark ::selection {
+  background: white;
+  color: black;
+}
+
+.theme-light ::selection {
+  background: #0f172a;
+  color: white;
+}
+
+/* Grid background for login */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--border-secondary) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-secondary) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* SVG inversion for light theme - inverts colors of dark SVGs */
+.svg-invert svg {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* More subtle inversion that preserves some colors */
+.svg-invert-subtle svg {
+  filter: invert(0.85) hue-rotate(180deg) saturate(1.5);
+}
