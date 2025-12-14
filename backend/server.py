@@ -108,6 +108,12 @@ async def ingest_files(files: List[UploadFile] = File(...)):
     Upload and process files into Graphon Knowledge Graph.
     Accepts multiple files (PDF, images, videos).
     """
+    if not API_KEY or API_KEY == "your_api_key_here":
+        raise HTTPException(
+            status_code=500,
+            detail="GRAPHON_API_KEY is not configured in backend/.env. Please add your API Key."
+        )
+
     global CURRENT_GROUP_ID
     temp_files = []
     client = get_client()
