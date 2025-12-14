@@ -31,7 +31,7 @@ export const DEFAULT_CONFIG = {
   provider: PROVIDERS.GOOGLE,
   apiKey: '',
   baseUrl: '',
-  model: MODELS.THINKING,
+  model: MODELS.GEMINI_3,
   mode: MODES.DIRECT,
   systemInstruction: '' // Will be populated dynamically
 };
