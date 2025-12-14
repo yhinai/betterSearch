@@ -5,7 +5,9 @@ import { Message, AppConfig, Attachment } from '../types';
 import { streamResponse, generateTitle } from '../services/llmService';
 import { planResearch, executeStep, AgentStep } from '../services/agentService';
 import { createChatSession, saveMessage, getMessagesByChatId, updateChatTitle, saveNote, getChatSessions, getHiveTransmissions } from '../services/dbService';
+import { uploadToGraphon } from '../services/graphonBridge';
 import { useTheme } from './ThemeProvider';
+import { useToast } from './Toast';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import MessageList from './MessageList';
 import InputArea from './InputArea';
@@ -43,6 +45,7 @@ interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => {
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
+  const { addToast } = useToast();
   const [input, setInput] = useState('');
   const [modalSvg, setModalSvg] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -435,6 +438,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     }, 100);
   };
 
+  const handleIngest = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    addToast(`Uploading ${files.length} files to Knowledge Graph...`, 'info', 5000);
+    
+    try {
+      const result = await uploadToGraphon(files);
+      
+      if (result.status === 'success' && result.group_id) {
+        setConfig(prev => ({
+          ...prev,
+          useGraphon: true,
+          graphonGroupId: result.group_id
+        }));
+        addToast(`Knowledge Graph Ready! (${result.files_processed} files processed)`, 'success');
+      } else {
+        addToast(`Upload failed: ${result.message}`, 'error');
+      }
+    } catch (e) {
+      addToast(`Error uploading to Graphon: ${(e as Error).message}`, 'error');
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-[95%] md:w-[90%] mx-auto p-4 md:p-8 font-mono relative">
 
@@ -629,6 +655,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         onStop={handleStop}
         onRegenerate={handleRegenerate}
         hasHistory={messages.length > 0}
+        onIngest={handleIngest}
       />
     </div>
   );

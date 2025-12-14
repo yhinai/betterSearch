@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import ChatInterface from './components/ChatInterface';
 import LoginScreen from './components/LoginScreen';
 import { ThemeProvider } from './components/ThemeProvider';
+import { ToastProvider } from './components/Toast';
 import { ensureUserExists } from './services/dbService';
 
 const App: React.FC = () => {
@@ -23,13 +24,15 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <div className="min-h-screen w-full bg-theme-primary text-theme-primary font-mono overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-        {user ? (
-          <ChatInterface username={user} onLogout={handleLogout} />
-        ) : (
-          <LoginScreen onLogin={handleLogin} />
-        )}
-      </div>
+      <ToastProvider>
+        <div className="min-h-screen w-full bg-theme-primary text-theme-primary font-mono overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+          {user ? (
+            <ChatInterface username={user} onLogout={handleLogout} />
+          ) : (
+            <LoginScreen onLogin={handleLogin} />
+          )}
+        </div>
+      </ToastProvider>
     </ThemeProvider>
   );
 };

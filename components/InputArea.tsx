@@ -12,6 +12,7 @@ interface InputAreaProps {
   onStop?: () => void;
   onRegenerate?: (isCompare: boolean) => void;
   hasHistory?: boolean;
+  onIngest?: (files: File[]) => void;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -22,10 +23,12 @@ const InputArea: React.FC<InputAreaProps> = ({
   mode,
   onStop,
   onRegenerate,
-  hasHistory
+  hasHistory,
+  onIngest
 }) => {
   const [isCompare, setIsCompare] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -44,6 +47,7 @@ const InputArea: React.FC<InputAreaProps> = ({
     if (!input.trim() && attachments.length === 0) return;
     handleSend(undefined, undefined, isCompare, attachments);
     setAttachments([]);
+    setPendingFiles([]);
   };
 
   // Handle keyboard events
@@ -59,6 +63,8 @@ const InputArea: React.FC<InputAreaProps> = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files) as File[];
+      setPendingFiles(prev => [...prev, ...files]);
+      
       const newAttachments: Attachment[] = [];
 
       for (const file of files) {
@@ -91,6 +97,7 @@ const InputArea: React.FC<InputAreaProps> = ({
 
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -105,7 +112,7 @@ const InputArea: React.FC<InputAreaProps> = ({
       {/* Attachment Preview Bar */}
       {attachments.length > 0 && (
         <div
-          className="w-full px-4 py-2 flex gap-4 overflow-x-auto no-scrollbar"
+          className="w-full px-4 py-2 flex gap-4 overflow-x-auto no-scrollbar items-center"
           style={{
             backgroundColor: 'var(--bg-hover)',
             borderBottom: '1px solid var(--border-secondary)'
@@ -138,6 +145,25 @@ const InputArea: React.FC<InputAreaProps> = ({
               </button>
             </div>
           ))}
+
+          {/* Ingest Button */}
+          {onIngest && (
+             <button
+               onClick={() => {
+                 if (onIngest) {
+                    onIngest(pendingFiles);
+                    setAttachments([]);
+                    setPendingFiles([]);
+                 }
+               }}
+               className="h-16 px-4 flex flex-col items-center justify-center gap-1 rounded hover:opacity-80 transition-opacity animate-slide-up ml-auto"
+               style={{ border: '1px solid var(--accent-cyan)', backgroundColor: 'var(--accent-cyan-bg)', color: 'var(--accent-cyan)' }}
+               title="Upload to Knowledge Graph"
+             >
+               <i className="fa-solid fa-brain text-xl"></i>
+               <span className="text-[8px] uppercase tracking-widest">INGEST</span>
+             </button>
+           )}
         </div>
       )}
 
