@@ -481,8 +481,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         {/* Knowledge Mode Toggle */}
         <button
           onClick={() => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon }))}
-          className={`h-8 px-3 rounded-full flex items-center gap-2 hover:bg-white/5 transition-all ${config.useGraphon ? 'ring-1 ring-purple-500/50 border-purple-400 text-purple-400' : 'border-white/20 text-white/60'}`}
-          style={{ borderWidth: '1px', borderStyle: 'solid' }}
+          className={`h-8 px-3 rounded-full flex items-center gap-2 hover:opacity-80 transition-all ${config.useGraphon ? 'ring-1 ring-purple-500/50' : ''}`}
+          style={{
+            borderWidth: '1px',
+            borderStyle: 'solid',
+            borderColor: config.useGraphon ? 'rgb(192, 132, 252)' : 'var(--border-primary)',
+            color: config.useGraphon ? 'rgb(192, 132, 252)' : 'var(--text-secondary)'
+          }}
           title="Toggle Knowledge Mode"
         >
           <i className="fa-solid fa-brain text-xs"></i>
@@ -492,8 +497,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         {/* Deep Research Toggle */}
         <button
           onClick={() => setConfig(prev => ({ ...prev, isDeepResearch: !prev.isDeepResearch }))}
-          className={`h-8 px-3 rounded-full flex items-center gap-2 hover:bg-white/5 transition-all ${config.isDeepResearch ? 'ring-1 ring-green-500/50 border-green-400 text-green-400' : 'border-white/20 text-white/60'}`}
-          style={{ borderWidth: '1px', borderStyle: 'solid' }}
+          className={`h-8 px-3 rounded-full flex items-center gap-2 hover:opacity-80 transition-all ${config.isDeepResearch ? 'ring-1 ring-green-500/50' : ''}`}
+          style={{
+            borderWidth: '1px',
+            borderStyle: 'solid',
+            borderColor: config.isDeepResearch ? 'rgb(74, 222, 128)' : 'var(--border-primary)',
+            color: config.isDeepResearch ? 'rgb(74, 222, 128)' : 'var(--text-secondary)'
+          }}
           title="Toggle Deep Research"
         >
           <i className="fa-solid fa-microscope text-xs"></i>

@@ -38,8 +38,9 @@ if not API_KEY:
     print("⚠️  WARNING: GRAPHON_API_KEY not set. Set it in backend/.env or as environment variable.")
     API_KEY = ""  # Will fail gracefully when used
 
-# Store group_id in memory (for hackathon - in production use DB)
+# Store group_id and all file IDs in memory (for hackathon - in production use DB)
 CURRENT_GROUP_ID: Optional[str] = None
+ALL_FILE_IDS: List[str] = []  # Persist all uploaded file IDs
 
 # Pydantic models for responses
 class IngestResponse(BaseModel):
@@ -47,6 +48,7 @@ class IngestResponse(BaseModel):
     group_id: Optional[str] = None
     message: str
     files_processed: int = 0
+    total_files: int = 0  # Total files in knowledge base
 
 class Source(BaseModel):
     node_type: str  # 'video', 'document', 'image'
@@ -65,6 +67,7 @@ class HealthResponse(BaseModel):
     status: str
     graphon_connected: bool
     active_group: Optional[str] = None
+    total_files: int = 0
 
 
 # Initialize Graphon client lazily
@@ -92,13 +95,15 @@ async def health_check():
         return HealthResponse(
             status="healthy",
             graphon_connected=True,
-            active_group=CURRENT_GROUP_ID
+            active_group=CURRENT_GROUP_ID,
+            total_files=len(ALL_FILE_IDS)
         )
     except Exception as e:
         return HealthResponse(
             status="degraded",
             graphon_connected=False,
-            active_group=CURRENT_GROUP_ID
+            active_group=CURRENT_GROUP_ID,
+            total_files=len(ALL_FILE_IDS)
         )
 
 
@@ -107,8 +112,9 @@ async def ingest_files(files: List[UploadFile] = File(...)):
     """
     Upload and process files into Graphon Knowledge Graph.
     Accepts multiple files (PDF, images, videos).
+    Files are ADDED to existing knowledge base, not replaced.
     """
-    global CURRENT_GROUP_ID
+    global CURRENT_GROUP_ID, ALL_FILE_IDS
     temp_files = []
     client = get_client()
     
@@ -129,30 +135,36 @@ async def ingest_files(files: List[UploadFile] = File(...)):
         )
         
         # 3. Filter successful uploads
-        success_ids = [f.file_id for f in file_objects if f.processing_status == "SUCCESS"]
+        new_success_ids = [f.file_id for f in file_objects if f.processing_status == "SUCCESS"]
         
-        if not success_ids:
+        if not new_success_ids:
             return IngestResponse(
                 status="error",
                 message="No files processed successfully",
-                files_processed=0
+                files_processed=0,
+                total_files=len(ALL_FILE_IDS)
             )
 
-        # 4. Create Knowledge Graph Group
-        group_name = f"betterSearch_KB_{len(success_ids)}_files"
+        # 4. ADD new file IDs to master list (not replace!)
+        ALL_FILE_IDS.extend(new_success_ids)
+        print(f"📚 Total files in knowledge base: {len(ALL_FILE_IDS)}")
+
+        # 5. Create NEW Knowledge Graph Group with ALL files
+        group_name = f"betterSearch_KB_{len(ALL_FILE_IDS)}_files"
         CURRENT_GROUP_ID = await client.create_group(
-            file_ids=success_ids,
+            file_ids=ALL_FILE_IDS,  # Include ALL files, not just new ones
             group_name=group_name,
             wait_for_ready=True
         )
         
-        print(f"✅ Knowledge Graph Ready: {CURRENT_GROUP_ID}")
+        print(f"✅ Knowledge Graph Ready: {CURRENT_GROUP_ID} ({len(ALL_FILE_IDS)} total files)")
         
         return IngestResponse(
             status="success",
             group_id=CURRENT_GROUP_ID,
-            message="Knowledge Graph Built Successfully",
-            files_processed=len(success_ids)
+            message=f"Knowledge Graph Updated - now contains {len(ALL_FILE_IDS)} files",
+            files_processed=len(new_success_ids),
+            total_files=len(ALL_FILE_IDS)
         )
 
     except Exception as e:
@@ -234,10 +246,11 @@ async def get_current_group():
 
 @app.delete("/group")
 async def clear_group():
-    """Clear the active knowledge graph group"""
-    global CURRENT_GROUP_ID
+    """Clear the active knowledge graph group and all file IDs"""
+    global CURRENT_GROUP_ID, ALL_FILE_IDS
     CURRENT_GROUP_ID = None
-    return {"status": "cleared", "message": "Knowledge Graph disconnected"}
+    ALL_FILE_IDS = []  # Clear all file IDs
+    return {"status": "cleared", "message": "Knowledge Graph disconnected and all files removed"}
 
 
 # --- Web Search Tool ---
