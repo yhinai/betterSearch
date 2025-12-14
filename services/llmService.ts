@@ -1,6 +1,12 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { MODELS, PROVIDERS, SVG_SYSTEM_INSTRUCTION, SOCRATIC_SYSTEM_INSTRUCTION, MODES } from '../constants';
+DEFAULT_CONFIG,
+  VISUALIZATION_INSTRUCTION,
+  SOCRATIC_SYSTEM_INSTRUCTION,
+  MODELS,
+  PROVIDERS,
+  MODES
+} from '../constants';
 import { Message, AppConfig, Note, Attachment } from '../types';
 import { queryGraphon, formatGraphonSources } from './graphonBridge';
 

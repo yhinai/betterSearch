@@ -10,6 +10,8 @@ import MessageList from './MessageList';
 import InputArea from './InputArea';
 import DropZone from './DropZone';
 
+import CommandPalette from './CommandPalette';
+
 // Lazy load modals for better performance
 const SettingsModal = lazy(() => import('./SettingsModal'));
 const SvgModal = lazy(() => import('./SvgModal'));
@@ -48,6 +50,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showHive, setShowHive] = useState(false);
   const [showLive, setShowLive] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // Abort Controller for stopping generation
@@ -371,139 +374,53 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         </div>
       </div>
 
-      {/* Mode Toggle & New Session (Left Side) */}
-      <div className="absolute top-4 left-4 md:left-8 z-20 flex gap-2">
-        <button
-          onClick={toggleMode}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.mode === MODES.SOCRATIC ? 'var(--text-primary)' : 'var(--bg-primary)',
-            color: config.mode === MODES.SOCRATIC ? 'var(--bg-primary)' : 'var(--text-tertiary)',
-            borderColor: config.mode === MODES.SOCRATIC ? 'var(--text-primary)' : 'var(--border-primary)'
-          }}
-        >
-          {config.mode === MODES.SOCRATIC ? 'SOCRATIC' : 'DIRECT'}
-        </button>
+      {/* Command Palette */}
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        config={config}
+        actions={{
+          toggleTheme,
+          clearChat: () => handleNewSession(), // Start new session effectively clears current view
+          toggleSocratic: toggleMode,
+          toggleGraphon: () => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon })),
+          openSettings: () => setShowSettings(true),
+          openHive: () => setShowHive(true),
+          openLive: () => setShowLive(true),
+        }}
+      />
 
-        <button
-          onClick={toggleModel}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple-bg)' : 'var(--bg-primary)',
-            color: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple)' : 'var(--text-tertiary)',
-            borderColor: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple)' : 'var(--border-primary)',
-            boxShadow: config.model === MODELS.GEMINI_3 ? '0 0 10px rgba(192,132,252,0.2)' : 'none'
-          }}
-          title="Switch Model Core"
-        >
-          {config.model === MODELS.GEMINI_3 ? 'G-3.0 PRO' : 'G-2.5 FLASH'}
-        </button>
+      {/* Minimalist Status Bar (Top Left) */}
+      <div className="absolute top-4 left-4 md:left-8 z-20 flex gap-4 items-center animate-in fade-in duration-700">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-bold tracking-tighter leading-none" style={{ color: 'var(--text-primary)' }}>betterSearch</h1>
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest opacity-50">
+            <span>{config.model === MODELS.GEMINI_3 ? 'G-3.0 PRO' : 'G-2.5 FLASH'}</span>
+            <span>//</span>
+            <span>{config.mode}</span>
+          </div>
+        </div>
+      </div>
 
-        {/* Knowledge Mode Toggle */}
+      {/* Minimalist Controls (Top Right) */}
+      <div className="absolute top-4 right-4 md:right-8 z-20 flex gap-3">
         <button
-          onClick={() => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon }))}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.useGraphon ? 'var(--accent-cyan-bg)' : 'var(--bg-primary)',
-            color: config.useGraphon ? 'var(--accent-cyan)' : 'var(--text-tertiary)',
-            borderColor: config.useGraphon ? 'var(--accent-cyan)' : 'var(--border-primary)',
-            boxShadow: config.useGraphon ? '0 0 10px rgba(34,211,238,0.3)' : 'none'
-          }}
-          title="Toggle Knowledge Graph Mode (uses your uploaded documents)"
+          onClick={() => setShowCommandPalette(true)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/5 transition-all group backdrop-blur-sm"
+          style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
         >
-          <i className={`fa-solid fa-brain ${config.useGraphon ? 'animate-pulse' : ''}`}></i>
-          <span className="hidden md:inline">KNOWLEDGE</span>
+          <span className="text-xs uppercase tracking-widest font-medium group-hover:text-theme-primary transition-colors">Menu</span>
+          <kbd className="hidden md:inline-flex h-5 items-center gap-1 rounded border border-white/10 bg-white/5 px-1.5 font-mono text-[10px] text-white/40">
+            ⌘K
+          </kbd>
         </button>
 
         <button
           onClick={handleNewSession}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center justify-center border px-3 py-1.5 transition-all w-10 hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-primary opacity-60 hover:opacity-100"
           title="New Session"
         >
           <i className="fa-solid fa-plus"></i>
-        </button>
-      </div>
-
-      {/* Right Controls */}
-      <div className="absolute top-4 right-4 md:right-8 z-20 flex items-center gap-4">
-
-        <button
-          onClick={() => setShowLive(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:bg-red-500 hover:text-white"
-          style={{ backgroundColor: 'var(--accent-red-bg)', color: 'var(--accent-red)', borderColor: 'var(--accent-red)', boxShadow: '0 0 10px rgba(239,68,68,0.2)' }}
-        >
-          <i className="fa-solid fa-microphone-lines animate-pulse"></i>
-          <span className="hidden md:inline">VOICE LINK</span>
-        </button>
-
-        <button
-          onClick={() => setShowHive(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80 relative"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-network-wired text-xs"></i>
-          <span className="hidden md:inline">HIVE</span>
-          {hiveMessages.length > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: 'var(--accent-cyan)' }}></span>
-              <span className="relative inline-flex rounded-full h-3 w-3" style={{ backgroundColor: 'var(--accent-cyan)' }}></span>
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setShowSyllabus(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-sitemap text-xs"></i>
-          <span className="hidden md:inline">SYLLABUS</span>
-        </button>
-
-        <button
-          onClick={() => setShowNotes(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-note-sticky text-xs"></i>
-          <span className="hidden md:inline">NOTES</span>
-        </button>
-
-        <button
-          onClick={() => setShowHistory(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-clock-rotate-left text-xs"></i>
-          <span className="hidden md:inline">HISTORY</span>
-        </button>
-
-        <button
-          onClick={() => setShowSettings(true)}
-          className="hover:opacity-100 opacity-60 transition-colors ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title="Configure Neural Link"
-        >
-          <i className="fa-solid fa-gear text-lg"></i>
-        </button>
-
-        <button
-          onClick={toggleTheme}
-          className="hover:opacity-100 opacity-60 transition-all ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-        >
-          <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'} text-lg`}></i>
-        </button>
-
-        <button
-          onClick={onLogout}
-          className="opacity-40 hover:text-red-500 transition-colors ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title="Disconnect User"
-        >
-          <i className="fa-solid fa-power-off text-lg"></i>
         </button>
       </div>
 
