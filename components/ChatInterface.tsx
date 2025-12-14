@@ -492,7 +492,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         <button
           onClick={() => setShowHive(true)}
           className="h-8 px-3 w-8 md:w-auto flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary relative gap-2"
-          title="Hive Mind"
+          title="NEXUS"
         >
           <i className="fa-solid fa-network-wired text-xs"></i>
           <span className="hidden md:inline">NEXUS</span>
