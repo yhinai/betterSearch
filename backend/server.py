@@ -233,8 +233,48 @@ async def clear_group():
     return {"status": "cleared", "message": "Knowledge Graph disconnected"}
 
 
+# --- Web Search Tool ---
+class SearchResult(BaseModel):
+    title: str
+    link: str
+    snippet: str
+
+class SearchResponse(BaseModel):
+    results: List[SearchResult]
+
+@app.post("/search", response_model=SearchResponse)
+async def search_web(
+    query: str = Form(...),
+    max_results: int = Form(5)
+):
+    """
+    Perform a web search using DuckDuckGo (Free, No API Key).
+    """
+    try:
+        from duckduckgo_search import DDGS
+        print(f"🔎 Searching Web: {query[:50]}...")
+        
+        results = DDGS().text(query, max_results=max_results)
+        
+        formatted_results = []
+        if results:
+            for r in results:
+                formatted_results.append(SearchResult(
+                    title=r.get('title', ''),
+                    link=r.get('href', ''),
+                    snippet=r.get('body', '')
+                ))
+                
+        return SearchResponse(results=formatted_results)
+        
+    except Exception as e:
+        print(f"❌ Search Error: {e}")
+        # Return empty list instead of failure for resilience
+        return SearchResponse(results=[])
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🧠 Neural Bridge Starting...")
     print(f"📡 API Key: {API_KEY[:20]}...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

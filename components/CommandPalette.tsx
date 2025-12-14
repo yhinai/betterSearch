@@ -11,6 +11,7 @@ interface CommandPaletteProps {
         clearChat: () => void;
         toggleSocratic: () => void;
         toggleGraphon: () => void;
+        toggleDeepResearch: () => void;
         openSettings: () => void;
         openHive: () => void;
         openLive: () => void;
@@ -99,6 +100,15 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChange, act
                             <i className={`mr-2 fa-solid fa-brain w-4 text-center ${config.useGraphon ? 'text-purple-400' : ''}`}></i>
                             <span>Toggle Knowledge Mode</span>
                             {config.useGraphon && <span className="ml-auto text-xs text-purple-400">ACTIVE</span>}
+                        </Command.Item>
+
+                        <Command.Item
+                            onSelect={() => { actions.toggleDeepResearch(); onOpenChange(false); }}
+                            className="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-theme-highlight aria-selected:text-theme-primary transition-colors cursor-pointer hover:bg-white/10"
+                        >
+                            <i className={`mr-2 fa-solid fa-microscope w-4 text-center ${config.isDeepResearch ? 'text-green-400' : ''}`}></i>
+                            <span>Toggle Deep Research</span>
+                            {config.isDeepResearch && <span className="ml-auto text-xs text-green-400">ACTIVE</span>}
                         </Command.Item>
                     </Command.Group>
 

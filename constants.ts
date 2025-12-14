@@ -25,7 +25,7 @@ export const PROVIDERS = {
 export const MODES = {
   DIRECT: 'direct',
   SOCRATIC: 'socratic'
-};
+} as const;
 
 export const DEFAULT_CONFIG = {
   provider: PROVIDERS.GOOGLE,

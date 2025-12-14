@@ -70,7 +70,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
           className="text-2xl md:text-4xl tracking-[0.2em] animate-pulse"
           style={{ color: 'var(--text-primary)' }}
         >
-          HIVE_MIND :: {config.provider.toUpperCase()}
+          BetterSearch :: {config.provider.toUpperCase()}
         </div>
         <div
           className="mt-4 text-xs tracking-widest text-center max-w-md leading-relaxed"
