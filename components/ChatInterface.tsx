@@ -478,22 +478,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       {/* Minimalist Controls (Top Right) */}
       <div className="absolute top-4 right-4 md:right-8 z-20 flex gap-2 md:gap-3 items-center">
 
-        {/* Knowledge Mode Toggle */}
-        <button
-          onClick={() => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon }))}
-          className={`h-8 px-3 rounded-full flex items-center gap-2 hover:opacity-80 transition-all ${config.useGraphon ? 'ring-1 ring-purple-500/50' : ''}`}
-          style={{
-            borderWidth: '1px',
-            borderStyle: 'solid',
-            borderColor: config.useGraphon ? 'rgb(192, 132, 252)' : 'var(--border-primary)',
-            color: config.useGraphon ? 'rgb(192, 132, 252)' : 'var(--text-secondary)'
-          }}
-          title="Toggle Knowledge Mode"
-        >
-          <i className="fa-solid fa-brain text-xs"></i>
-          <span className="text-[10px] font-bold tracking-widest uppercase">KNOWLEDGE</span>
-        </button>
-
         {/* Deep Research Toggle */}
         <button
           onClick={() => setConfig(prev => ({ ...prev, isDeepResearch: !prev.isDeepResearch }))}
