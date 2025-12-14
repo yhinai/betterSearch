@@ -8,7 +8,19 @@ import {
   MODES
 } from '../constants';
 import { Message, AppConfig, Note, Attachment } from '../types';
-import { queryGraphon, formatGraphonSources } from './graphonBridge';
+import { queryGraphon, formatGraphonSources, uploadToGraphon } from './graphonBridge';
+
+// Helper to convert base64 attachment to File object
+const attachmentToFile = (attachment: Attachment): File => {
+  const byteString = atob(attachment.data);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  const blob = new Blob([ab], { type: attachment.mimeType });
+  return new File([blob], attachment.name || 'file', { type: attachment.mimeType });
+};
 
 export const streamResponse = async (
   config: AppConfig,
@@ -20,21 +32,60 @@ export const streamResponse = async (
   // Check if Knowledge Graph mode is enabled
   if (config.useGraphon) {
     try {
-      onChunk("🧠 *Accessing Neural Graph...*\n\n");
+      // Get attachments from the last user message
+      const lastUserMsg = history.length > 0 ? history[history.length - 1] : null;
+      const attachments = lastUserMsg?.attachments || [];
 
-      const graphonResponse = await queryGraphon(prompt, config.graphonGroupId);
+      // If there are attachments, ingest them first to build/update the knowledge base
+      if (attachments.length > 0) {
+        onChunk("📤 *Uploading files to Knowledge Graph...*\n\n");
 
-      // Stream the Graphon answer
-      onChunk(graphonResponse.answer);
+        // Convert attachments to File objects
+        const files = attachments.map(att => attachmentToFile(att));
 
-      // Add formatted sources
-      const sourcesText = formatGraphonSources(graphonResponse.sources);
-      if (sourcesText) {
-        onChunk(sourcesText);
+        try {
+          const ingestResult = await uploadToGraphon(files);
+
+          if (ingestResult.status === 'success' && ingestResult.group_id) {
+            // Store the group_id for future queries (via config update would need state lifting)
+            // For now, we'll use it directly in this query
+            onChunk(`✅ *Knowledge Base Ready!* (${ingestResult.files_processed} files indexed)\n\n`);
+            onChunk("🧠 *Querying Neural Graph...*\n\n");
+
+            // Query with the new group_id
+            const graphonResponse = await queryGraphon(prompt || "Summarize this document", ingestResult.group_id);
+            onChunk(graphonResponse.answer);
+
+            const sourcesText = formatGraphonSources(graphonResponse.sources);
+            if (sourcesText) {
+              onChunk(sourcesText);
+            }
+            return;
+          } else {
+            onChunk(`⚠️ *Ingest Warning: ${ingestResult.message}*\n*Falling back to standard model...*\n\n`);
+          }
+        } catch (ingestError) {
+          const err = ingestError as Error;
+          onChunk(`⚠️ *File Upload Error: ${err.message}*\n*Falling back to standard model...*\n\n`);
+          // Fall through to regular LLM call
+        }
+      } else {
+        // No attachments, just query existing knowledge base
+        onChunk("🧠 *Accessing Neural Graph...*\n\n");
+
+        const graphonResponse = await queryGraphon(prompt, config.graphonGroupId);
+
+        // Stream the Graphon answer
+        onChunk(graphonResponse.answer);
+
+        // Add formatted sources
+        const sourcesText = formatGraphonSources(graphonResponse.sources);
+        if (sourcesText) {
+          onChunk(sourcesText);
+        }
+
+        return; // Knowledge mode complete, don't call regular LLM
       }
-
-      return; // Knowledge mode complete, don't call regular LLM
-
     } catch (e) {
       const error = e as Error;
       onChunk(`\n\n⚠️ *Knowledge Graph Error: ${error.message}*\n*Falling back to standard model...*\n\n`);
