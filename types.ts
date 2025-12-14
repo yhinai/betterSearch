@@ -6,6 +6,18 @@ export interface Attachment {
   name?: string;
 }
 
+export interface GraphonSource {
+  node_type: 'video' | 'document' | 'image';
+  video_name?: string;
+  start_time?: number;
+  end_time?: number;
+  time_limited_url?: string;
+  pdf_name?: string;
+  page_num?: number;
+  text?: string;
+  image_name?: string;
+}
+
 export interface Message {
   id: string;
   chatId?: string;
@@ -14,6 +26,7 @@ export interface Message {
   comparisonText?: string;
   timestamp?: number;
   attachments?: Attachment[];
+  graphonSources?: GraphonSource[];
 }
 
 export interface ChatSession {

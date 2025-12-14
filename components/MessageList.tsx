@@ -1,8 +1,11 @@
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Message, AppConfig } from '../types';
+import React, { useEffect, useRef, useState, Suspense, lazy } from 'react';
+import { Message, AppConfig, GraphonSource } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import { ThinkingIndicator } from './Skeleton';
+import { MediaSourceList } from './MediaSource';
+
+const ClipModal = lazy(() => import('./ClipModal'));
 
 interface MessageListProps {
   messages: Message[];
@@ -16,6 +19,7 @@ interface MessageListProps {
 const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgClick, onArchive, onBranch, config }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [clipModalData, setClipModalData] = useState<{ sources: GraphonSource[], text: string } | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -31,7 +35,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
   };
 
   // Reusable Header Component for Actions
-  const MessageHeader = ({ role, id, text, variant }: { role: string, id: string, text: string, variant?: string }) => (
+  const MessageHeader = ({ role, id, text, variant, sources }: { role: string, id: string, text: string, variant?: string, sources?: GraphonSource[] }) => (
     <div
       className="text-[10px] mb-1 tracking-wider uppercase flex items-center gap-2 justify-between"
       style={{ color: 'var(--text-muted)' }}
@@ -39,6 +43,17 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
       <span>{role === 'user' ? 'USER_01' : `SYSTEM_AI [${config.provider}]${variant ? ' // ' + variant : ''}`}</span>
       {role === 'model' && (
         <div className="flex gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          {/* CLIP button - only show if there are Graphon sources */}
+          {sources && sources.length > 0 && (
+            <button
+              onClick={() => setClipModalData({ sources, text })}
+              className="uppercase text-[9px] tracking-widest px-2 py-0.5 flex items-center gap-1 hover:opacity-80"
+              style={{ border: '1px solid var(--accent-magenta)', color: 'var(--accent-magenta)' }}
+              title="Compile Sources into Clip"
+            >
+              <i className="fa-solid fa-film"></i> CLIP
+            </button>
+          )}
           <button
             onClick={() => onBranch(id, text)}
             className="uppercase text-[9px] tracking-widest px-2 py-0.5 flex items-center gap-1 hover:opacity-80"
@@ -135,7 +150,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
                 borderLeft: msg.role === 'model' ? '2px solid var(--border-primary)' : 'none'
               }}
             >
-              <MessageHeader role={msg.role} id={msg.id} text={msg.text} />
+              <MessageHeader role={msg.role} id={msg.id} text={msg.text} sources={msg.graphonSources} />
 
               {/* Attachments Display */}
               {msg.attachments && msg.attachments.length > 0 && (
@@ -179,6 +194,11 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
                   />
                 )}
               </div>
+
+              {/* Inline Media Sources from Graphon */}
+              {msg.role === 'model' && msg.graphonSources && msg.graphonSources.length > 0 && (
+                <MediaSourceList sources={msg.graphonSources} />
+              )}
             </div>
           )}
 
@@ -189,6 +209,17 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
       {showThinking && <ThinkingIndicator />}
 
       <div ref={messagesEndRef} />
+
+      {/* Clip Modal */}
+      {clipModalData && (
+        <Suspense fallback={null}>
+          <ClipModal
+            sources={clipModalData.sources}
+            messageText={clipModalData.text}
+            onClose={() => setClipModalData(null)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

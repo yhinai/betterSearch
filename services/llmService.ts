@@ -1,14 +1,34 @@
 
 import { GoogleGenAI } from "@google/genai";
-DEFAULT_CONFIG,
+<<<<<<< Updated upstream
+import {
+  DEFAULT_CONFIG,
   VISUALIZATION_INSTRUCTION,
   SOCRATIC_SYSTEM_INSTRUCTION,
   MODELS,
   PROVIDERS,
   MODES
 } from '../constants';
-import { Message, AppConfig, Note, Attachment } from '../types';
-import { queryGraphon, formatGraphonSources } from './graphonBridge';
+=======
+import { MODELS, PROVIDERS, SVG_SYSTEM_INSTRUCTION, SOCRATIC_SYSTEM_INSTRUCTION, MODES } from '../constants';
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+import { Message, AppConfig, Note, Attachment, GraphonSource } from '../types';
+import { queryGraphon, formatGraphonSources, GraphonSource as BridgeSource } from './graphonBridge';
+
+// Return type now includes optional sources for inline media display
+export interface StreamResponseResult {
+  sources?: GraphonSource[];
+}
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 
 export const streamResponse = async (
   config: AppConfig,
@@ -16,7 +36,7 @@ export const streamResponse = async (
   prompt: string,
   onChunk: (text: string) => void,
   signal?: AbortSignal
-) => {
+): Promise<StreamResponseResult> => {
   // Check if Knowledge Graph mode is enabled
   if (config.useGraphon) {
     try {
@@ -27,13 +47,9 @@ export const streamResponse = async (
       // Stream the Graphon answer
       onChunk(graphonResponse.answer);
 
-      // Add formatted sources
-      const sourcesText = formatGraphonSources(graphonResponse.sources);
-      if (sourcesText) {
-        onChunk(sourcesText);
-      }
-
-      return; // Knowledge mode complete, don't call regular LLM
+      // Return structured sources for inline media rendering
+      // Don't add text sources anymore - let the UI render them nicely
+      return { sources: graphonResponse.sources as GraphonSource[] };
 
     } catch (e) {
       const error = e as Error;
@@ -58,6 +74,8 @@ export const streamResponse = async (
       await callGoogle(config, history, prompt, onChunk, signal);
       break;
   }
+
+  return {}; // No sources for regular LLM calls
 };
 
 export const processDocument = async (config: AppConfig, attachment: Attachment): Promise<{ title: string, content: string }> => {
@@ -350,7 +368,7 @@ const processStream = async (response: Response, onLine: (line: string) => void)
 };
 
 const getSystemInstruction = (config: AppConfig) => {
-  return config.mode === MODES.SOCRATIC ? SOCRATIC_SYSTEM_INSTRUCTION : SVG_SYSTEM_INSTRUCTION;
+  return config.mode === MODES.SOCRATIC ? SOCRATIC_SYSTEM_INSTRUCTION : VISUALIZATION_INSTRUCTION;
 };
 
 const callGoogle = async (config: AppConfig, history: Message[], prompt: string, onChunk: (text: string) => void, signal?: AbortSignal) => {

@@ -3,7 +3,7 @@
  * Handles communication with the Python Neural Bridge server
  */
 
-const BRIDGE_URL = 'http://localhost:8001';
+const BRIDGE_URL = 'http://localhost:8000';
 
 // Types
 export interface GraphonSource {
@@ -11,9 +11,11 @@ export interface GraphonSource {
     video_name?: string;
     start_time?: number;
     end_time?: number;
+    time_limited_url?: string;  // Signed URL for playback/viewing
     pdf_name?: string;
     page_num?: number;
     text?: string;
+    image_name?: string;  // Name of image file
 }
 
 export interface GraphonQueryResponse {

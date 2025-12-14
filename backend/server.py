@@ -53,9 +53,11 @@ class Source(BaseModel):
     video_name: Optional[str] = None
     start_time: Optional[float] = None
     end_time: Optional[float] = None
+    time_limited_url: Optional[str] = None  # Signed URL for playback/viewing
     pdf_name: Optional[str] = None
     page_num: Optional[int] = None
     text: Optional[str] = None
+    image_name: Optional[str] = None  # Name of image file
 
 class QueryResponse(BaseModel):
     answer: str
@@ -204,9 +206,11 @@ async def query_knowledge(
                     video_name=src.get('video_name'),
                     start_time=src.get('start_time'),
                     end_time=src.get('end_time'),
+                    time_limited_url=src.get('time_limited_url'),
                     pdf_name=src.get('pdf_name'),
                     page_num=src.get('page_num'),
-                    text=src.get('text')
+                    text=src.get('text'),
+                    image_name=src.get('image_name')
                 ))
         
         return QueryResponse(

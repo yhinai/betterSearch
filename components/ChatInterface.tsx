@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_CONFIG, MODES, MODELS } from '../constants';
-import { Message, AppConfig, Attachment } from '../types';
+import { Message, AppConfig, Attachment, GraphonSource } from '../types';
 import { streamResponse, generateTitle } from '../services/llmService';
 import { createChatSession, saveMessage, getMessagesByChatId, updateChatTitle, saveNote, getChatSessions, getHiveTransmissions } from '../services/dbService';
 import { useTheme } from './ThemeProvider';
@@ -212,14 +212,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       } else {
         // Standard Single Stream
         let fullText = '';
-        await streamResponse(config, updatedHistory, userText, (chunk) => {
+        let graphonSources: GraphonSource[] | undefined;
+        const result = await streamResponse(config, updatedHistory, userText, (chunk) => {
           fullText += chunk;
           queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
             if (!old) return [];
             return old.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m);
           });
         }, signal);
-        const finalMsg = { ...aiMsg, text: fullText };
+
+        // Capture sources from Graphon response for inline media display
+        if (result.sources) {
+          graphonSources = result.sources;
+        }
+
+        const finalMsg = { ...aiMsg, text: fullText, graphonSources };
         saveMessage(finalMsg);
         return finalMsg;
       }
