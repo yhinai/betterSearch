@@ -168,13 +168,20 @@ async def ingest_files(files: List[UploadFile] = File(...)):
 
 @app.post("/query", response_model=QueryResponse)
 async def query_knowledge(
-    query: str = Form(...),
-    group_id: Optional[str] = Form(None)
+    query: str = Form(default=""),
+    group_id: Optional[str] = Form(default=None)
 ):
     """
     Query the Knowledge Graph with natural language.
     Returns answer with source citations.
     """
+    # Handle empty or missing query
+    if not query or not query.strip():
+        return QueryResponse(
+            answer="Please provide a question to query the knowledge base.",
+            sources=[]
+        )
+    
     target_group = group_id or CURRENT_GROUP_ID
     
     if not target_group:
@@ -244,17 +251,27 @@ class SearchResponse(BaseModel):
 
 @app.post("/search", response_model=SearchResponse)
 async def search_web(
-    query: str = Form(...),
-    max_results: int = Form(5)
+    query: str = Form(default=""),
+    max_results: str = Form(default="5")
 ):
     """
     Perform a web search using DuckDuckGo (Free, No API Key).
     """
     try:
+        # Handle empty query
+        if not query or not query.strip():
+            return SearchResponse(results=[])
+        
+        # Parse max_results safely
+        try:
+            num_results = int(max_results) if max_results else 5
+        except ValueError:
+            num_results = 5
+            
         from duckduckgo_search import DDGS
         print(f"🔎 Searching Web: {query[:50]}...")
         
-        results = DDGS().text(query, max_results=max_results)
+        results = DDGS().text(query, max_results=num_results)
         
         formatted_results = []
         if results:
