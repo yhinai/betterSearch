@@ -34,10 +34,11 @@ export interface AppConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
-  mode: string;
+  mode: 'direct' | 'socratic';
   systemInstruction?: string;
   useGraphon?: boolean;  // Enable Knowledge Graph mode
   graphonGroupId?: string;  // Active Graphon group ID
+  isDeepResearch?: boolean;
 }
 
 export interface QuizQuestion {
@@ -46,4 +47,11 @@ export interface QuizQuestion {
   options: string[];
   correctAnswerIndex: number; // 0-3
   explanation: string;
+}
+
+export interface VideoState {
+  isOpen: boolean;
+  src?: string;
+  title: string;
+  timestamp: number;
 }

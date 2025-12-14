@@ -335,8 +335,9 @@ body {
 }
 
 .theme-light ::selection {
-  background: #0f172a;
-  color: white;
+  background: #2563eb;
+  /* High contrast blue */
+  color: #ffffff;
 }
 
 /* Grid background for login */

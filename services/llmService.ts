@@ -1,6 +1,12 @@
-
 import { GoogleGenAI } from "@google/genai";
-import { MODELS, PROVIDERS, SVG_SYSTEM_INSTRUCTION, SOCRATIC_SYSTEM_INSTRUCTION, MODES } from '../constants';
+import {
+  DEFAULT_CONFIG,
+  VISUALIZATION_INSTRUCTION,
+  SOCRATIC_SYSTEM_INSTRUCTION,
+  MODELS,
+  PROVIDERS,
+  MODES
+} from '../constants';
 import { Message, AppConfig, Note, Attachment } from '../types';
 import { queryGraphon, formatGraphonSources } from './graphonBridge';
 
@@ -351,7 +357,7 @@ const processStream = async (response: Response, onLine: (line: string) => void)
 };
 
 const getSystemInstruction = (config: AppConfig) => {
-  return config.mode === MODES.SOCRATIC ? SOCRATIC_SYSTEM_INSTRUCTION : SVG_SYSTEM_INSTRUCTION;
+  return config.mode === MODES.SOCRATIC ? SOCRATIC_SYSTEM_INSTRUCTION : VISUALIZATION_INSTRUCTION;
 };
 
 const callGoogle = async (config: AppConfig, history: Message[], prompt: string, onChunk: (text: string) => void, signal?: AbortSignal) => {

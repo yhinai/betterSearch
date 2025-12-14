@@ -1,16 +1,65 @@
-
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
+import mermaid from 'mermaid';
 import CodeBlock from './CodeBlock';
 import { useTheme } from './ThemeProvider';
+
+// Initialize Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark', // We can switch this based on betterSearch theme logic if needed
+  securityLevel: 'loose',
+  fontFamily: 'monospace',
+});
 
 interface MarkdownRendererProps {
   content: string;
   onSvgClick: (svgContent: string) => void;
 }
+
+const MermaidBlock = ({ code }: { code: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    // Re-initialize theme when it changes
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: theme === 'dark' ? 'dark' : 'default',
+      securityLevel: 'loose',
+    });
+
+    const renderChart = async () => {
+      if (ref.current) {
+        try {
+          const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+          const { svg } = await mermaid.render(id, code);
+          setSvg(svg);
+        } catch (error) {
+          console.error("Mermaid failed to render:", error);
+          setSvg(`<div class="text-red-500 text-xs">Failed to render diagram</div>`);
+        }
+      }
+    };
+    renderChart();
+  }, [code, theme]);
+
+  return (
+    <div
+      className="mermaid my-6 flex justify-center p-4 rounded-sm border transition-all overflow-x-auto"
+      ref={ref}
+      style={{
+        backgroundColor: 'var(--bg-tertiary)',
+        borderColor: 'var(--border-primary)'
+      }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+};
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, onSvgClick }) => {
   const { theme } = useTheme();
@@ -23,6 +72,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, onSvgClick
         code: ({ node, inline, className, children, ...props }: any) => {
           const match = /language-(\w+)/.exec(className || '');
           const isSvg = !inline && match && match[1] === 'svg';
+          const isMermaid = !inline && match && match[1] === 'mermaid';
+
+          if (isMermaid) {
+            return <MermaidBlock code={String(children)} />;
+          }
 
           if (isSvg) {
             const svgContent = String(children);

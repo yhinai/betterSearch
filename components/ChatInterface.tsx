@@ -3,12 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_CONFIG, MODES, MODELS } from '../constants';
 import { Message, AppConfig, Attachment } from '../types';
 import { streamResponse, generateTitle } from '../services/llmService';
+import { planResearch, executeStep, AgentStep } from '../services/agentService';
 import { createChatSession, saveMessage, getMessagesByChatId, updateChatTitle, saveNote, getChatSessions, getHiveTransmissions } from '../services/dbService';
 import { useTheme } from './ThemeProvider';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import MessageList from './MessageList';
 import InputArea from './InputArea';
 import DropZone from './DropZone';
+
+import CommandPalette from './CommandPalette';
 
 // Lazy load modals for better performance
 const SettingsModal = lazy(() => import('./SettingsModal'));
@@ -48,6 +51,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
   const [showSyllabus, setShowSyllabus] = useState(false);
   const [showHive, setShowHive] = useState(false);
   const [showLive, setShowLive] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // Abort Controller for stopping generation
@@ -113,7 +117,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
   const toggleMode = () => {
     setConfig(prev => ({
       ...prev,
-      mode: prev.mode === MODES.DIRECT ? MODES.SOCRATIC : MODES.DIRECT
+      mode: (prev.mode === MODES.DIRECT ? MODES.SOCRATIC : MODES.DIRECT) as 'direct' | 'socratic'
     }));
   };
 
@@ -140,100 +144,173 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     enabled: !!currentChatId,
   });
 
+  // --- DEEP RESEARCH LOGIC ---
+
+  /**
+   * Deep Research Orchestration
+   * 1. Plan
+   * 2. Execute Steps
+   * 3. Final Answer
+   */
+  const handleDeepResearch = async (prompt: string, chatId: string, currentMsgs: Message[], signal: AbortSignal) => {
+    const aiMsgId = (Date.now() + 1).toString();
+    const updateMsg = (text: string) => {
+      queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
+        if (!old) return [];
+        return old.map(m => m.id === aiMsgId ? { ...m, text: text } : m);
+      });
+    };
+
+    let fullText = "🧠 *Deep Research Agent Initialized...*\n\n";
+
+    try {
+      // 1. Plan
+      fullText += "📋 *Generating Research Plan...*\n";
+      updateMsg(fullText);
+
+      const plan = await planResearch(config, prompt);
+      fullText += `\n**Plan Goal:** ${plan.goal}\n`;
+      updateMsg(fullText);
+
+      const contextForFinal: string[] = [];
+
+      // 2. Execute Steps
+      for (const step of plan.steps) {
+        if (signal?.aborted) throw new Error("Aborted");
+        fullText += `\n> **Step ${step.id}:** ${step.thought} (${step.action})...\n`;
+        updateMsg(fullText);
+
+        const result = await executeStep(step);
+        contextForFinal.push(`Step ${step.id} Result: ${result}`);
+
+        // Show snippet of result
+        const snippet = result.length > 200 ? result.substring(0, 200) + "..." : result;
+        fullText += `  *Result:* ${snippet}\n`;
+        updateMsg(fullText);
+      }
+
+      // 3. Final Synthesis
+      fullText += "\n✨ *Synthesizing Final Answer...*\n\n";
+      updateMsg(fullText);
+
+      const finalPrompt = `
+        Research Context:
+        ${contextForFinal.join('\n\n')}
+
+        User Question: ${prompt}
+
+        Synthesize a comprehensive answer based on the research above.
+      `;
+
+      await streamResponse(config, [], finalPrompt, (chunk) => {
+        fullText += chunk;
+        updateMsg(fullText);
+      }, signal);
+
+      return fullText;
+
+    } catch (e) {
+      const errText = fullText + `\n\n❌ **Research Failed:** ${(e as Error).message}`;
+      updateMsg(errText);
+      return errText;
+    }
+  };
+
+  // --- MUTATION ---
+
+  const mutateChat = async ({ userText, chatId, currentMsgs, isCompare, attachments, signal }: { userText: string, chatId: string, currentMsgs: Message[], isCompare?: boolean, attachments?: Attachment[], signal?: AbortSignal }) => {
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      chatId: chatId,
+      role: 'user',
+      text: userText,
+      timestamp: Date.now(),
+      attachments: attachments
+    };
+
+    saveMessage(userMsg);
+
+    // Update Title logic
+    const sessions = getChatSessions(username);
+    const currentSession = sessions.find(s => s.id === chatId);
+    const isFork = currentSession?.title.startsWith('Fork:');
+
+    if ((currentMsgs.length === 0 || isFork) && userText) {
+      updateChatTitle(chatId, userText.slice(0, 30) + (userText.length > 30 ? '...' : ''));
+      queryClient.invalidateQueries({ queryKey: ['sessions', username] });
+    }
+
+    // Optimistic AI Msg
+    const aiMsgId = (Date.now() + 1).toString();
+    const aiMsg: Message = {
+      id: aiMsgId,
+      chatId: chatId,
+      role: 'model',
+      text: '',
+      timestamp: Date.now()
+    };
+
+    const updatedHistory = [...currentMsgs, userMsg];
+    queryClient.setQueryData(['messages', chatId], [...updatedHistory, aiMsg]);
+
+    // Handle Deep Research
+    if (config.isDeepResearch) {
+      const finalText = await handleDeepResearch(userText, chatId, currentMsgs, signal || new AbortController().signal);
+      const finalMsg = { ...aiMsg, text: finalText };
+      saveMessage(finalMsg);
+      return finalMsg;
+    }
+
+    // Standard Logic
+    if (isCompare) {
+      let fullTextA = '';
+      let fullTextB = '';
+
+      const streamA = streamResponse(config, updatedHistory, userText, (chunk) => {
+        fullTextA += chunk;
+        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
+          if (!old) return [];
+          return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
+        });
+      }, signal);
+
+      const streamB = streamResponse(config, updatedHistory, userText, (chunk) => {
+        fullTextB += chunk;
+        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
+          if (!old) return [];
+          return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
+        });
+      }, signal);
+
+      await Promise.all([streamA, streamB]);
+      const finalMsg = { ...aiMsg, text: fullTextA, comparisonText: fullTextB };
+      saveMessage(finalMsg);
+      return finalMsg;
+    } else {
+      let fullText = '';
+      await streamResponse(config, updatedHistory, userText, (chunk) => {
+        fullText += chunk;
+        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
+          if (!old) return [];
+          return old.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m);
+        });
+      }, signal);
+      const finalMsg = { ...aiMsg, text: fullText };
+      saveMessage(finalMsg);
+      return finalMsg;
+    }
+  };
+
   const chatMutation = useMutation({
-    mutationFn: async ({ userText, chatId, currentMsgs, isCompare, attachments, signal }: { userText: string, chatId: string, currentMsgs: Message[], isCompare?: boolean, attachments?: Attachment[], signal?: AbortSignal }) => {
-      const userMsg: Message = {
-        id: Date.now().toString(),
-        chatId: chatId,
-        role: 'user',
-        text: userText,
-        timestamp: Date.now(),
-        attachments: attachments
-      };
-
-      saveMessage(userMsg);
-
-      // Update Title if needed or if it's a generic Fork title
-      const sessions = getChatSessions(username);
-      const currentSession = sessions.find(s => s.id === chatId);
-      const isFork = currentSession?.title.startsWith('Fork:');
-
-      if ((currentMsgs.length === 0 || isFork) && userText) {
-        updateChatTitle(chatId, userText.slice(0, 30) + (userText.length > 30 ? '...' : ''));
-        queryClient.invalidateQueries({ queryKey: ['sessions', username] });
-      }
-
-      // Optimistic Update: Add User Message + Placeholder AI Message
-      const aiMsgId = (Date.now() + 1).toString();
-      const aiMsg: Message = {
-        id: aiMsgId,
-        chatId: chatId,
-        role: 'model',
-        text: '',
-        comparisonText: isCompare ? '' : undefined,
-        timestamp: Date.now()
-      };
-
-      const updatedHistory = [...currentMsgs, userMsg];
-
-      // Directly update cache for instant feedback
-      queryClient.setQueryData(['messages', chatId], [...updatedHistory, aiMsg]);
-
-      if (isCompare) {
-        let fullTextA = '';
-        let fullTextB = '';
-
-        // Trigger two parallel streams
-        const streamA = streamResponse(config, updatedHistory, userText, (chunk) => {
-          fullTextA += chunk;
-          queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-            if (!old) return [];
-            return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
-          });
-        }, signal);
-
-        const streamB = streamResponse(config, updatedHistory, userText, (chunk) => {
-          fullTextB += chunk;
-          queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-            if (!old) return [];
-            return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
-          });
-        }, signal);
-
-        await Promise.all([streamA, streamB]);
-
-        const finalMsg = { ...aiMsg, text: fullTextA, comparisonText: fullTextB };
-        saveMessage(finalMsg);
-        return finalMsg;
-
-      } else {
-        // Standard Single Stream
-        let fullText = '';
-        await streamResponse(config, updatedHistory, userText, (chunk) => {
-          fullText += chunk;
-          queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-            if (!old) return [];
-            return old.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m);
-          });
-        }, signal);
-        const finalMsg = { ...aiMsg, text: fullText };
-        saveMessage(finalMsg);
-        return finalMsg;
-      }
-    },
+    mutationFn: mutateChat,
     onError: (error: any, variables) => {
-      // If error is abort error, ignore (user stopped)
-      if (error.name === 'AbortError' || error.message.includes('aborted')) {
-        return;
-      }
-
+      if (error.name === 'AbortError' || error.message.includes('aborted')) return;
       const { chatId } = variables;
       const errorMsg = `ERROR: ${error.message || 'CONNECTION TERMINATED.'}`;
       queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
         if (!old) return [];
         const lastMsg = old[old.length - 1];
         if (lastMsg.role === 'model') {
-          // Update the placeholder with error
           saveMessage({ ...lastMsg, text: errorMsg });
           return old.map(m => m.id === lastMsg.id ? { ...m, text: errorMsg } : m);
         }
@@ -253,15 +330,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     e?.preventDefault();
     const textToSend = overrideText !== undefined ? overrideText : input;
 
-    // Stop any previous generation before starting new one
     handleStop();
 
-    // Allow empty text if there are attachments
     if ((!textToSend.trim() && (!attachments || attachments.length === 0)) || chatMutation.isPending || !currentChatId) return;
 
     if (!overrideText) setInput('');
 
-    // Create new controller for this request
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -371,76 +445,54 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         </div>
       </div>
 
-      {/* Mode Toggle & New Session (Left Side) */}
-      <div className="absolute top-4 left-4 md:left-8 z-20 flex gap-2">
-        <button
-          onClick={toggleMode}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.mode === MODES.SOCRATIC ? 'var(--text-primary)' : 'var(--bg-primary)',
-            color: config.mode === MODES.SOCRATIC ? 'var(--bg-primary)' : 'var(--text-tertiary)',
-            borderColor: config.mode === MODES.SOCRATIC ? 'var(--text-primary)' : 'var(--border-primary)'
-          }}
-        >
-          {config.mode === MODES.SOCRATIC ? 'SOCRATIC' : 'DIRECT'}
-        </button>
+      {/* Command Palette */}
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        config={config}
+        actions={{
+          toggleTheme,
+          clearChat: () => handleNewSession(), // Start new session effectively clears current view
+          toggleSocratic: toggleMode,
+          toggleGraphon: () => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon })),
+          toggleDeepResearch: () => setConfig(prev => ({ ...prev, isDeepResearch: !prev.isDeepResearch })),
+          openSettings: () => setShowSettings(true),
+          openHive: () => setShowHive(true),
+          openLive: () => setShowLive(true),
+        }}
+      />
 
-        <button
-          onClick={toggleModel}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple-bg)' : 'var(--bg-primary)',
-            color: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple)' : 'var(--text-tertiary)',
-            borderColor: config.model === MODELS.GEMINI_3 ? 'var(--accent-purple)' : 'var(--border-primary)',
-            boxShadow: config.model === MODELS.GEMINI_3 ? '0 0 10px rgba(192,132,252,0.2)' : 'none'
-          }}
-          title="Switch Model Core"
-        >
-          {config.model === MODELS.GEMINI_3 ? 'G-3.0 PRO' : 'G-2.5 FLASH'}
-        </button>
-
-        {/* Knowledge Mode Toggle */}
-        <button
-          onClick={() => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon }))}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all"
-          style={{
-            backgroundColor: config.useGraphon ? 'var(--accent-cyan-bg)' : 'var(--bg-primary)',
-            color: config.useGraphon ? 'var(--accent-cyan)' : 'var(--text-tertiary)',
-            borderColor: config.useGraphon ? 'var(--accent-cyan)' : 'var(--border-primary)',
-            boxShadow: config.useGraphon ? '0 0 10px rgba(34,211,238,0.3)' : 'none'
-          }}
-          title="Toggle Knowledge Graph Mode (uses your uploaded documents)"
-        >
-          <i className={`fa-solid fa-brain ${config.useGraphon ? 'animate-pulse' : ''}`}></i>
-          <span className="hidden md:inline">KNOWLEDGE</span>
-        </button>
-
-        <button
-          onClick={handleNewSession}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center justify-center border px-3 py-1.5 transition-all w-10 hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-          title="New Session"
-        >
-          <i className="fa-solid fa-plus"></i>
-        </button>
+      {/* Minimalist Status Bar (Top Left) */}
+      <div className="absolute top-4 left-4 md:left-8 z-20 flex gap-4 items-center animate-in fade-in duration-700">
+        <div className="flex flex-col">
+          <h1 className="text-xl font-bold tracking-tighter leading-none" style={{ color: 'var(--text-primary)' }}>BetterSearch :: GOOGLE</h1>
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest opacity-50">
+            <span>//</span>
+            <span>GOOGLE</span>
+            <span>//</span>
+            <span>{config.mode}</span>
+          </div>
+        </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="absolute top-4 right-4 md:right-8 z-20 flex items-center gap-4">
+      {/* Minimalist Controls (Top Right) */}
+      <div className="absolute top-4 right-4 md:right-8 z-20 flex gap-2 md:gap-3 items-center">
 
+        {/* Mode Toggle */}
         <button
-          onClick={() => setShowLive(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:bg-red-500 hover:text-white"
-          style={{ backgroundColor: 'var(--accent-red-bg)', color: 'var(--accent-red)', borderColor: 'var(--accent-red)', boxShadow: '0 0 10px rgba(239,68,68,0.2)' }}
+          onClick={toggleMode}
+          className="h-8 px-3 rounded-full flex items-center gap-2 hover:bg-white/5 transition-all"
+          style={{ border: '1px solid var(--border-primary)', color: 'var(--text-secondary)' }}
+          title="Toggle Mode"
         >
-          <i className="fa-solid fa-microphone-lines animate-pulse"></i>
-          <span className="hidden md:inline">VOICE LINK</span>
+          <span className="text-[10px] font-bold tracking-widest uppercase">{config.mode === MODES.SOCRATIC ? 'SOCRATIC' : 'DIRECT'}</span>
         </button>
 
+        {/* Hive Mind */}
         <button
           onClick={() => setShowHive(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80 relative"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary relative"
+          title="Hive Mind"
         >
           <i className="fa-solid fa-network-wired text-xs"></i>
           <span className="hidden md:inline">NEXUS</span>
@@ -452,59 +504,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           )}
         </button>
 
-        <button
-          onClick={() => setShowSyllabus(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-sitemap text-xs"></i>
-          <span className="hidden md:inline">SYLLABUS</span>
-        </button>
 
-        <button
-          onClick={() => setShowNotes(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
-        >
-          <i className="fa-solid fa-note-sticky text-xs"></i>
-          <span className="hidden md:inline">NOTES</span>
-        </button>
-
+        {/* History / Knowledge */}
         <button
           onClick={() => setShowHistory(true)}
-          className="uppercase text-[10px] tracking-[0.2em] font-bold flex items-center gap-2 border px-3 py-1.5 transition-all hover:opacity-80"
-          style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary"
+          title="History"
         >
-          <i className="fa-solid fa-clock-rotate-left text-xs"></i>
-          <span className="hidden md:inline">HISTORY</span>
+          <i className="fa-solid fa-clock-rotate-left"></i>
         </button>
 
+        {/* Notes (Knowledge) */}
         <button
-          onClick={() => setShowSettings(true)}
-          className="hover:opacity-100 opacity-60 transition-colors ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title="Configure Neural Link"
+          onClick={() => setShowNotes(true)}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary"
+          title="Knowledge Notes"
         >
-          <i className="fa-solid fa-gear text-lg"></i>
+          <i className="fa-solid fa-book-journal-whills"></i>
         </button>
 
+        {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
-          className="hover:opacity-100 opacity-60 transition-all ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary"
+          title="Toggle Theme"
         >
-          <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'} text-lg`}></i>
+          <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
         </button>
 
+        {/* Settings */}
         <button
-          onClick={onLogout}
-          className="opacity-40 hover:text-red-500 transition-colors ml-2"
-          style={{ color: 'var(--text-primary)' }}
-          title="Disconnect User"
+          onClick={() => setShowSettings(true)}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary"
+          title="Settings"
         >
-          <i className="fa-solid fa-power-off text-lg"></i>
+          <i className="fa-solid fa-cog"></i>
         </button>
+
+
       </div>
 
       {/* Modals */}
