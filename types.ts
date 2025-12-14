@@ -55,3 +55,12 @@ export interface VideoState {
   title: string;
   timestamp: number;
 }
+
+export interface HiveTransmission {
+  id: string;
+  title: string;
+  content: string;
+  sender: string;
+  recipient: string;
+  timestamp: number;
+}

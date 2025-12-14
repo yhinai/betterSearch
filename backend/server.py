@@ -9,6 +9,10 @@ from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import warnings
+
+# Suppress warnings from duckduckgo_search about package renaming
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="duckduckgo_search")
 
 # Load environment variables from .env file
 try:

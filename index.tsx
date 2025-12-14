@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
-import { initDB } from './services/dbService';
+
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -10,8 +10,9 @@ if (!rootElement) {
 }
 
 // Initialize DB once at startup
+// Dexie initializes lazily
 if (typeof window !== 'undefined') {
-  initDB();
+  // db.open().catch(...) handled in dbService module scope or on first use
 }
 
 const queryClient = new QueryClient({

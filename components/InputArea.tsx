@@ -8,6 +8,7 @@ interface InputAreaProps {
   setInput: (value: string) => void;
   handleSend: (e?: React.FormEvent, overrideText?: string, isCompare?: boolean, attachments?: Attachment[]) => void;
   isLoading: boolean;
+  processTime?: number;
   mode?: string;
   onStop?: () => void;
   onRegenerate?: (isCompare: boolean) => void;
@@ -19,6 +20,7 @@ const InputArea: React.FC<InputAreaProps> = ({
   setInput,
   handleSend,
   isLoading,
+  processTime,
   mode,
   onStop,
   onRegenerate,
@@ -173,7 +175,7 @@ const InputArea: React.FC<InputAreaProps> = ({
             className="h-10 border hover:bg-red-600 transition-all uppercase text-[10px] tracking-widest px-6 font-bold flex items-center justify-center whitespace-nowrap animate-pulse"
             style={{ backgroundColor: 'var(--accent-red-bg)', color: 'var(--accent-red)', borderColor: 'var(--accent-red)' }}
           >
-            STOP
+            STOP {processTime !== undefined && processTime > 0 && `(${processTime.toFixed(1)}s)`}
           </button>
         ) : (
           <button

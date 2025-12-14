@@ -1,138 +1,88 @@
 
-import { Message, ChatSession, Note } from '../types';
+import { db, User, SyllabusData } from './db';
+import { Message, ChatSession, Note, HiveTransmission } from '../types';
 
-declare const alasql: any;
-
-const DB_NAME = 'bettersearch_db';
-
-export const initDB = () => {
-  try {
-    alasql(`CREATE LOCALSTORAGE DATABASE IF NOT EXISTS ${DB_NAME}`);
-    alasql(`ATTACH LOCALSTORAGE DATABASE ${DB_NAME}`);
-    alasql(`USE ${DB_NAME}`);
-
-    // Create tables if not exist
-    alasql(`CREATE TABLE IF NOT EXISTS chats (id STRING PRIMARY KEY, title STRING, timestamp NUMBER, username STRING)`);
-    alasql(`CREATE TABLE IF NOT EXISTS messages (id STRING PRIMARY KEY, chatId STRING, role STRING, text STRING, timestamp NUMBER, comparisonText STRING, attachments STRING)`);
-    alasql(`CREATE TABLE IF NOT EXISTS notes (id STRING PRIMARY KEY, title STRING, content STRING, timestamp NUMBER, username STRING)`);
-    alasql(`CREATE TABLE IF NOT EXISTS syllabus (id STRING PRIMARY KEY, content STRING, noteCount NUMBER, timestamp NUMBER, username STRING)`);
-    alasql(`CREATE TABLE IF NOT EXISTS hive_transmissions (id STRING PRIMARY KEY, title STRING, content STRING, sender STRING, recipient STRING, timestamp NUMBER)`);
-    alasql(`CREATE TABLE IF NOT EXISTS users (username STRING PRIMARY KEY, lastLogin NUMBER)`);
-
-    // --- MIGRATIONS ---
-
-    // Add username columns if they don't exist (for existing users, set to 'anon')
-    try { alasql('ALTER TABLE chats ADD COLUMN username STRING'); alasql("UPDATE chats SET username = 'anon' WHERE username IS NULL"); } catch (e) { }
-    try { alasql('ALTER TABLE notes ADD COLUMN username STRING'); alasql("UPDATE notes SET username = 'anon' WHERE username IS NULL"); } catch (e) { }
-    try { alasql('ALTER TABLE syllabus ADD COLUMN username STRING'); alasql("UPDATE syllabus SET username = 'anon' WHERE username IS NULL"); } catch (e) { }
-
-    // Legacy migrations
-    try { alasql('ALTER TABLE messages ADD COLUMN comparisonText STRING'); } catch (e) { }
-    try { alasql('ALTER TABLE messages ADD COLUMN attachments STRING'); } catch (e) { }
-
-    // User Table Migration: Backfill users from existing chats/notes if they aren't in users table
-    try {
-      const existingChatUsers = alasql('SELECT DISTINCT username FROM chats');
-      existingChatUsers.forEach((u: any) => {
-        if (u.username) {
-          try { alasql('INSERT INTO users VALUES (?, ?)', [u.username, Date.now()]); } catch (e) { }
-        }
-      });
-      const existingNoteUsers = alasql('SELECT DISTINCT username FROM notes');
-      existingNoteUsers.forEach((u: any) => {
-        if (u.username) {
-          try { alasql('INSERT INTO users VALUES (?, ?)', [u.username, Date.now()]); } catch (e) { }
-        }
-      });
-    } catch (e) {
-      console.error("User migration failed", e);
-    }
-
-    console.log("SQL Database Initialized & Migrated");
-  } catch (e) {
-    console.error("Database initialization failed", e);
-  }
-};
+// Ensure DB is open
+if (!db.isOpen()) {
+  db.open().catch(err => console.error("Failed to open db", err));
+}
 
 // --- USER MANAGEMENT ---
 
-export const ensureUserExists = (username: string) => {
+export const ensureUserExists = async (username: string) => {
   try {
-    const res = alasql('SELECT * FROM users WHERE username = ?', [username]);
-    if (res.length === 0) {
-      alasql('INSERT INTO users VALUES (?, ?)', [username, Date.now()]);
+    const user = await db.users.get(username);
+    if (!user) {
+      await db.users.add({ username, lastLogin: Date.now() });
     } else {
-      alasql('UPDATE users SET lastLogin = ? WHERE username = ?', [Date.now(), username]);
+      await db.users.update(username, { lastLogin: Date.now() });
     }
   } catch (e) {
     console.error("Failed to ensure user exists", e);
   }
 };
 
-export const checkUserExists = (username: string): boolean => {
+export const checkUserExists = async (username: string): Promise<boolean> => {
   try {
-    const res = alasql('SELECT * FROM users WHERE username = ?', [username]);
-    return res.length > 0;
+    const user = await db.users.get(username);
+    return !!user;
   } catch (e) {
     return false;
   }
 };
 
-export const createChatSession = (username: string, title: string = 'New Session'): ChatSession => {
+export const createChatSession = async (username: string, title: string = 'New Session'): Promise<ChatSession> => {
   const id = Date.now().toString();
   const timestamp = Date.now();
-  alasql(`INSERT INTO chats VALUES (?, ?, ?, ?)`, [id, title, timestamp, username]);
-  return { id, title, timestamp };
+  const session: ChatSession = { id, title, timestamp };
+  // We need to add username to the session object if we want to query by it easily in Dexie 
+  // without a separate index or if we strictly follow the interface. 
+  // The interface in types.ts doesn't have username, but the DB schema does. 
+  // We will verify types.ts compatibility. For now, we assume we can pass extra props or update type.
+  // Actually, checking db.ts schema: 'chats: id, username, timestamp'.
+  // Dexie add expects object matching schema.
+  await db.chats.add({ ...session, username } as any);
+  return session;
 };
 
-export const getChatSessions = (username: string): ChatSession[] => {
+export const getChatSessions = async (username: string): Promise<ChatSession[]> => {
   try {
-    const sessions = alasql(`SELECT * FROM chats WHERE username = ? ORDER BY timestamp DESC`, [username]);
-    return sessions.map((s: any) => ({
-      id: s.id,
-      title: s.title || 'Untitled Session',
-      timestamp: typeof s.timestamp === 'number' ? s.timestamp : Date.now()
-    }));
+    return await db.chats.where('username').equals(username).reverse().sortBy('timestamp');
   } catch (e) {
     return [];
   }
 };
 
-export const saveMessage = (message: Message) => {
+export const saveMessage = async (message: Message) => {
   try {
-    const attachmentsStr = message.attachments ? JSON.stringify(message.attachments) : undefined;
-    alasql('DELETE FROM messages WHERE id = ?', [message.id]);
-    alasql(`INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [message.id, message.chatId, message.role, message.text, message.timestamp, message.comparisonText || '', attachmentsStr]);
+    await db.messages.put(message);
   } catch (e) {
     console.error("Failed to save message", e);
   }
 };
 
-export const getMessagesByChatId = (chatId: string): Message[] => {
+export const getMessagesByChatId = async (chatId: string): Promise<Message[]> => {
   try {
-    const msgs = alasql(`SELECT * FROM messages WHERE chatId = ? ORDER BY timestamp ASC`, [chatId]);
-    return msgs.map((m: any) => ({
-      ...m,
-      attachments: m.attachments ? JSON.parse(m.attachments) : undefined
-    }));
+    return await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
   } catch (e) {
     return [];
   }
 };
 
-export const updateChatTitle = (chatId: string, title: string) => {
+export const updateChatTitle = async (chatId: string, title: string) => {
   try {
-    alasql(`UPDATE chats SET title = ? WHERE id = ?`, [title, chatId]);
+    await db.chats.update(chatId, { title });
   } catch (e) {
     console.error("Failed to update title", e);
   }
 };
 
-export const deleteChatSession = (chatId: string) => {
+export const deleteChatSession = async (chatId: string) => {
   try {
-    alasql(`DELETE FROM messages WHERE chatId = ?`, [chatId]);
-    alasql(`DELETE FROM chats WHERE id = ?`, [chatId]);
+    await db.transaction('rw', db.chats, db.messages, async () => {
+      await db.messages.where('chatId').equals(chatId).delete();
+      await db.chats.delete(chatId);
+    });
   } catch (e) {
     console.error("Failed to delete session", e);
   }
@@ -140,36 +90,37 @@ export const deleteChatSession = (chatId: string) => {
 
 // --- NOTES OPERATIONS ---
 
-export const saveNote = (note: Note, username: string) => {
+export const saveNote = async (note: Note, username: string) => {
   try {
-    alasql('DELETE FROM notes WHERE id = ?', [note.id]); // Upsert safety
-    alasql(`INSERT INTO notes VALUES (?, ?, ?, ?, ?)`, [note.id, note.title, note.content, note.timestamp, username]);
+    await db.notes.put({ ...note, username } as any);
   } catch (e) {
     console.error("Failed to save note", e);
   }
 };
 
-export const getNotes = (username: string): Note[] => {
+export const getNotes = async (username: string): Promise<Note[]> => {
   try {
-    return alasql(`SELECT * FROM notes WHERE username = ? ORDER BY timestamp DESC`, [username]);
+    return await db.notes.where('username').equals(username).reverse().sortBy('timestamp');
   } catch (e) {
     return [];
   }
 };
 
-export const deleteNote = (id: string) => {
+export const deleteNote = async (id: string) => {
   try {
-    alasql(`DELETE FROM notes WHERE id = ?`, [id]);
+    await db.notes.delete(id);
   } catch (e) {
     console.error("Failed to delete note", e);
   }
 };
 
-export const searchNotes = (username: string, query: string): Note[] => {
+export const searchNotes = async (username: string, query: string): Promise<Note[]> => {
   try {
     const lowerQ = query.toLowerCase();
-    const notes = getNotes(username);
-    return notes.filter(n =>
+    // Dexie doesn't have full text search built-in, so we filter in memory after fetching user's notes
+    // For large datasets, we'd use an optimized search index, but for local notes this is fine.
+    const allNotes = await getNotes(username);
+    return allNotes.filter(n =>
       n.title.toLowerCase().includes(lowerQ) ||
       n.content.toLowerCase().includes(lowerQ)
     );
@@ -180,37 +131,35 @@ export const searchNotes = (username: string, query: string): Note[] => {
 
 // --- HIVE TRANSMISSION OPERATIONS ---
 
-export interface HiveTransmission {
-  id: string;
-  title: string;
-  content: string;
-  sender: string;
-  recipient: string;
-  timestamp: number;
-}
-
-export const sendHiveNote = (note: Note, sender: string, recipient: string) => {
+export const sendHiveNote = async (note: Note, sender: string, recipient: string) => {
   try {
     const id = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    alasql(`INSERT INTO hive_transmissions VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, note.title, note.content, sender, recipient, Date.now()]);
+    const tx: HiveTransmission = {
+      id,
+      title: note.title,
+      content: note.content,
+      sender,
+      recipient,
+      timestamp: Date.now()
+    };
+    await db.hive_transmissions.add(tx);
   } catch (e) {
     console.error("Failed to transmit note", e);
     throw e;
   }
 };
 
-export const getHiveTransmissions = (recipient: string): HiveTransmission[] => {
+export const getHiveTransmissions = async (recipient: string): Promise<HiveTransmission[]> => {
   try {
-    return alasql(`SELECT * FROM hive_transmissions WHERE recipient = ? ORDER BY timestamp DESC`, [recipient]);
+    return await db.hive_transmissions.where('recipient').equals(recipient).reverse().sortBy('timestamp');
   } catch (e) {
     return [];
   }
 };
 
-export const deleteHiveTransmission = (id: string) => {
+export const deleteHiveTransmission = async (id: string) => {
   try {
-    alasql(`DELETE FROM hive_transmissions WHERE id = ?`, [id]);
+    await db.hive_transmissions.delete(id);
   } catch (e) {
     console.error("Failed to delete transmission", e);
   }
@@ -218,23 +167,26 @@ export const deleteHiveTransmission = (id: string) => {
 
 // --- SYLLABUS OPERATIONS ---
 
-export const saveSyllabus = (content: string, noteCount: number, username: string) => {
+export const saveSyllabus = async (content: string, noteCount: number, username: string) => {
   try {
-    // Unique ID per user
     const id = `syllabus_${username}`;
-    alasql('DELETE FROM syllabus WHERE id = ?', [id]);
-    alasql('INSERT INTO syllabus VALUES (?, ?, ?, ?, ?)',
-      [id, content, noteCount, Date.now(), username]);
+    await db.syllabus.put({
+      id,
+      content,
+      noteCount,
+      timestamp: Date.now(),
+      username
+    });
   } catch (e) {
     console.error("Failed to save syllabus", e);
   }
 };
 
-export const getSyllabus = (username: string): { content: string, noteCount: number, timestamp: number } | null => {
+export const getSyllabus = async (username: string): Promise<{ content: string, noteCount: number, timestamp: number } | null> => {
   try {
     const id = `syllabus_${username}`;
-    const result = alasql('SELECT * FROM syllabus WHERE id = ?', [id]);
-    return result.length > 0 ? result[0] : null;
+    const result = await db.syllabus.get(id);
+    return result || null;
   } catch (e) {
     return null;
   }
@@ -242,26 +194,19 @@ export const getSyllabus = (username: string): { content: string, noteCount: num
 
 // --- BACKUP & RESTORE FUNCTIONS ---
 
-export const exportBackup = (username: string) => {
+export const exportBackup = async (username: string) => {
   try {
-    const chats = alasql('SELECT * FROM chats WHERE username = ?', [username]);
-    // Get messages only for these chats
-    const chatIds = chats.map((c: any) => c.id);
-    let messages: any[] = [];
-    if (chatIds.length > 0) {
-      // alasql IN clause handling can be tricky with string arrays, manual loop often safer in JS environment for small datasets
-      // or constructing the query string. Let's iterate.
-      // Or fetch all and filter in JS (inefficient but safe for local).
-      const allMsgs = alasql('SELECT * FROM messages');
-      const validIds = new Set(chatIds);
-      messages = allMsgs.filter((m: any) => validIds.has(m.chatId));
-    }
+    const chats = await db.chats.where('username').equals(username).toArray();
+    const chatIds = chats.map(c => c.id);
 
-    const notes = alasql('SELECT * FROM notes WHERE username = ?', [username]);
-    const syllabus = alasql('SELECT * FROM syllabus WHERE username = ?', [username]);
+    // Dexie 'anyOf' is useful here
+    const messages = await db.messages.where('chatId').anyOf(chatIds).toArray();
+
+    const notes = await db.notes.where('username').equals(username).toArray();
+    const syllabus = await db.syllabus.where('username').equals(username).toArray();
 
     const data = {
-      version: 4,
+      version: 5, // Bump version for Dexie migration
       timestamp: Date.now(),
       username,
       chats,
@@ -289,56 +234,53 @@ export const exportBackup = (username: string) => {
 export const importBackup = async (file: File, currentUsername: string): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-
-        // Strategy: We import data UNDER the current logged in user
-        // We do NOT overwrite other users' data.
-
         const targetUser = currentUsername;
 
-        // Clean existing data for this user
-        alasql('DELETE FROM chats WHERE username = ?', [targetUser]);
-        alasql('DELETE FROM notes WHERE username = ?', [targetUser]);
-        alasql('DELETE FROM syllabus WHERE username = ?', [targetUser]);
+        await db.transaction('rw', db.chats, db.messages, db.notes, db.syllabus, async () => {
+          // Clear existing data for this user
+          await db.chats.where('username').equals(targetUser).delete();
+          await db.notes.where('username').equals(targetUser).delete();
 
-        // We must also delete messages linked to old chats of this user
-        // But since we deleted chats, we can't look them up easily unless we did it before.
-        // For simplicity in this lightweight app, orphan messages are rarely an issue, 
-        // but let's try to be clean. 
-        // Realistically, wiping all messages that don't belong to existing chats is an option, 
-        // but might affect other users.
-        // Let's just proceed with insert.
+          // We need to delete messages for old chats too.
+          // Complex without cascading deletes, but we can assume fresh start or just leave orphans.
+          // For better cleanup, we could fetch old chat IDs first, but let's stick to simple logic:
+          // Just insert new data.
+          // Actually, let's delete syllabus too
+          await db.syllabus.where('username').equals(targetUser).delete();
 
-        if (json.chats) {
-          json.chats.forEach((c: any) => {
-            alasql('INSERT INTO chats VALUES (?, ?, ?, ?)', [c.id, c.title, c.timestamp, targetUser]);
-          });
-        }
+          if (json.chats) {
+            for (const c of json.chats) {
+              await db.chats.put({ ...c, username: targetUser });
+            }
+          }
 
-        if (json.messages) {
-          json.messages.forEach((m: any) => {
-            // Delete potential duplicate message ID to avoid PK conflict
-            alasql('DELETE FROM messages WHERE id = ?', [m.id]);
-            alasql('INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?)',
-              [m.id, m.chatId, m.role, m.text, m.timestamp, m.comparisonText || '', m.attachments || undefined]);
-          });
-        }
+          if (json.messages) {
+            // We must ensure we don't insert messages for chats that don't belong to us?
+            // But we just inserted chats for us.
+            // However, messages from backup might duplicate existing IDs if we didn't clear them adequately.
+            // 'put' handles duplicates.
+            for (const m of json.messages) {
+              // Dexie handles object storage, ensuring attachments are kept as objects if they are already objects in JSON
+              await db.messages.put(m);
+            }
+          }
 
-        if (json.notes) {
-          json.notes.forEach((n: any) => {
-            alasql('INSERT INTO notes VALUES (?, ?, ?, ?, ?)', [n.id, n.title, n.content, n.timestamp, targetUser]);
-          });
-        }
+          if (json.notes) {
+            for (const n of json.notes) {
+              await db.notes.put({ ...n, username: targetUser });
+            }
+          }
 
-        if (json.syllabus) {
-          json.syllabus.forEach((s: any) => {
-            // Ensure ID is correct for this user
-            const sylId = `syllabus_${targetUser}`;
-            alasql('INSERT INTO syllabus VALUES (?, ?, ?, ?, ?)', [sylId, s.content, s.noteCount, s.timestamp, targetUser]);
-          });
-        }
+          if (json.syllabus) {
+            for (const s of json.syllabus) {
+              const sylId = `syllabus_${targetUser}`;
+              await db.syllabus.put({ ...s, id: sylId, username: targetUser });
+            }
+          }
+        });
 
         resolve(true);
       } catch (err) {

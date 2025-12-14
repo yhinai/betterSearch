@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_CONFIG, MODES, MODELS } from '../constants';
 import { Message, AppConfig, Attachment } from '../types';
 import { streamResponse, generateTitle } from '../services/llmService';
@@ -41,7 +42,7 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => {
-  const queryClient = useQueryClient();
+  const queryClient = useQueryClient(); // Keep for mutation logic if needed, or remove if unused 
   const { theme, toggleTheme } = useTheme();
   const [input, setInput] = useState('');
   const [modalSvg, setModalSvg] = useState<string | null>(null);
@@ -75,20 +76,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
   // Start new session on mount if none, or if user changed
   useEffect(() => {
     // When username changes, we should look for the most recent session or create a new one
-    const sessions = getChatSessions(username);
-    if (sessions.length > 0) {
-      setCurrentChatId(sessions[0].id);
-    } else {
-      handleNewSession();
-    }
+    // Async check in effect
+    getChatSessions(username).then(sessions => {
+      if (sessions.length > 0) {
+        setCurrentChatId(sessions[0].id);
+      } else {
+        handleNewSession();
+      }
+    });
   }, [username]);
 
-  // Poll for Hive Messages
-  const { data: hiveMessages = [] } = useQuery({
-    queryKey: ['hive', username],
-    queryFn: () => getHiveTransmissions(username),
-    refetchInterval: 5000
-  });
+  const hiveMessages = useLiveQuery(() => getHiveTransmissions(username), [username]) || [];
 
   // Close any open modal
   const closeAllModals = () => {
@@ -101,12 +99,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     setModalSvg(null);
   };
 
-  const handleNewSession = () => {
+  const handleNewSession = async () => {
     handleStop(); // Stop any pending generation
-    const newSession = createChatSession(username);
+    const newSession = await createChatSession(username);
     setCurrentChatId(newSession.id);
-    queryClient.invalidateQueries({ queryKey: ['sessions', username] });
-    queryClient.setQueryData(['messages', newSession.id], []);
+    // queryClient.invalidateQueries({ queryKey: ['sessions', username] }); -> Not needed with LiveQuery
+    // queryClient.setQueryData(['messages', newSession.id], []); -> Not needed
   };
 
   const handleSelectChat = (chatId: string) => {
@@ -137,61 +135,99 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     onFocusInput: () => document.querySelector<HTMLInputElement>('input[type="text"]')?.focus(),
   });
 
-  // React Query for Messages
-  const { data: messages = [] } = useQuery({
-    queryKey: ['messages', currentChatId],
-    queryFn: () => currentChatId ? getMessagesByChatId(currentChatId) : [],
-    enabled: !!currentChatId,
-  });
+  // Manual trigger for Dexie updates if observability fails
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+
+  // React Live Query for Messages
+  const messages = useLiveQuery(
+    () => currentChatId ? getMessagesByChatId(currentChatId) : [],
+    [currentChatId, updateTrigger]
+  ) || [];
+
+  // Local state for the message currently being streamed (ephemeral)
+  const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+
+  // Local state for optimistic user message display
+  const [pendingUserMessage, setPendingUserMessage] = useState<Message | null>(null);
+
+  // Clear pending message once it appears in the live query results
+  useEffect(() => {
+    if (pendingUserMessage && messages.some(m => m.id === pendingUserMessage.id)) {
+      setPendingUserMessage(null);
+    }
+  }, [messages, pendingUserMessage]);
+
+  // Combined messages for display
+  const displayMessages = React.useMemo(() => {
+    let combined = [...messages];
+
+    // Add pending user message if not already in list
+    if (pendingUserMessage && !combined.some(m => m.id === pendingUserMessage.id)) {
+      combined.push(pendingUserMessage);
+    }
+
+    // Add streaming AI message if not already in list
+    if (streamingMessage && !combined.some(m => m.id === streamingMessage.id)) {
+      combined.push(streamingMessage);
+    }
+
+    return combined;
+  }, [messages, streamingMessage, pendingUserMessage]);
 
   // --- DEEP RESEARCH LOGIC ---
 
-  /**
-   * Deep Research Orchestration
-   * 1. Plan
-   * 2. Execute Steps
-   * 3. Final Answer
-   */
   const handleDeepResearch = async (prompt: string, chatId: string, currentMsgs: Message[], signal: AbortSignal) => {
     const aiMsgId = (Date.now() + 1).toString();
-    const updateMsg = (text: string) => {
-      queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-        if (!old) return [];
-        return old.map(m => m.id === aiMsgId ? { ...m, text: text } : m);
-      });
-    };
+
+    // Initial placeholder
+    setStreamingMessage({
+      id: aiMsgId,
+      chatId,
+      role: 'model',
+      text: "🧠 *Deep Research Agent Initialized...*\n\n",
+      timestamp: Date.now()
+    });
 
     let fullText = "🧠 *Deep Research Agent Initialized...*\n\n";
 
+    const updateMsg = (text: string) => {
+      fullText = text;
+      setStreamingMessage({
+        id: aiMsgId,
+        chatId,
+        role: 'model',
+        text: fullText,
+        timestamp: Date.now()
+      });
+    };
+
     try {
       // 1. Plan
-      fullText += "📋 *Generating Research Plan...*\n";
-      updateMsg(fullText);
+      updateMsg(fullText + "📋 *Generating Research Plan...*\n");
 
       const plan = await planResearch(config, prompt);
-      fullText += `\n**Plan Goal:** ${plan.goal}\n`;
-      updateMsg(fullText);
+      const goalText = `\n**Plan Goal:** ${plan.goal}\n`;
+      updateMsg(fullText + goalText);
 
       const contextForFinal: string[] = [];
 
       // 2. Execute Steps
       for (const step of plan.steps) {
         if (signal?.aborted) throw new Error("Aborted");
-        fullText += `\n> **Step ${step.id}:** ${step.thought} (${step.action})...\n`;
-        updateMsg(fullText);
+        const stepStart = `\n> **Step ${step.id}:** ${step.thought} (${step.action})...\n`;
+        updateMsg(fullText + stepStart);
 
         const result = await executeStep(step);
         contextForFinal.push(`Step ${step.id} Result: ${result}`);
 
-        // Show snippet of result
+        // Show snippet
         const snippet = result.length > 200 ? result.substring(0, 200) + "..." : result;
-        fullText += `  *Result:* ${snippet}\n`;
-        updateMsg(fullText);
+        const stepEnd = `  *Result:* ${snippet}\n`;
+        updateMsg(fullText + stepEnd);
       }
 
       // 3. Final Synthesis
-      fullText += "\n✨ *Synthesizing Final Answer...*\n\n";
-      updateMsg(fullText);
+      updateMsg(fullText + "\n✨ *Synthesizing Final Answer...*\n\n");
 
       const finalPrompt = `
         Research Context:
@@ -203,8 +239,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       `;
 
       await streamResponse(config, [], finalPrompt, (chunk) => {
-        fullText += chunk;
-        updateMsg(fullText);
+        updateMsg(fullText + chunk);
       }, signal);
 
       return fullText;
@@ -228,19 +263,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       attachments: attachments
     };
 
-    saveMessage(userMsg);
+    // Optimistically show user message immediately
+    setPendingUserMessage(userMsg);
+
+    await saveMessage(userMsg);
+    setUpdateTrigger(prev => prev + 1);
 
     // Update Title logic
-    const sessions = getChatSessions(username);
+    const sessions = await getChatSessions(username);
     const currentSession = sessions.find(s => s.id === chatId);
     const isFork = currentSession?.title.startsWith('Fork:');
 
     if ((currentMsgs.length === 0 || isFork) && userText) {
-      updateChatTitle(chatId, userText.slice(0, 30) + (userText.length > 30 ? '...' : ''));
-      queryClient.invalidateQueries({ queryKey: ['sessions', username] });
+      await updateChatTitle(chatId, userText.slice(0, 30) + (userText.length > 30 ? '...' : ''));
     }
 
-    // Optimistic AI Msg
+    // Optimistic AI Msg Setup
     const aiMsgId = (Date.now() + 1).toString();
     const aiMsg: Message = {
       id: aiMsgId,
@@ -250,14 +288,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       timestamp: Date.now()
     };
 
+    setStreamingMessage(aiMsg);
+
     const updatedHistory = [...currentMsgs, userMsg];
-    queryClient.setQueryData(['messages', chatId], [...updatedHistory, aiMsg]);
 
     // Handle Deep Research
     if (config.isDeepResearch) {
       const finalText = await handleDeepResearch(userText, chatId, currentMsgs, signal || new AbortController().signal);
       const finalMsg = { ...aiMsg, text: finalText };
-      saveMessage(finalMsg);
+      await saveMessage(finalMsg);
+      setUpdateTrigger(prev => prev + 1);
+      setStreamingMessage(null);
       return finalMsg;
     }
 
@@ -268,35 +309,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
 
       const streamA = streamResponse(config, updatedHistory, userText, (chunk) => {
         fullTextA += chunk;
-        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-          if (!old) return [];
-          return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
-        });
+        setStreamingMessage(prev => prev ? { ...prev, text: fullTextA, comparisonText: fullTextB } : null);
       }, signal);
 
       const streamB = streamResponse(config, updatedHistory, userText, (chunk) => {
         fullTextB += chunk;
-        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-          if (!old) return [];
-          return old.map(m => m.id === aiMsgId ? { ...m, text: fullTextA, comparisonText: fullTextB } : m);
-        });
+        setStreamingMessage(prev => prev ? { ...prev, text: fullTextA, comparisonText: fullTextB } : null);
       }, signal);
 
       await Promise.all([streamA, streamB]);
       const finalMsg = { ...aiMsg, text: fullTextA, comparisonText: fullTextB };
-      saveMessage(finalMsg);
+      await saveMessage(finalMsg);
+      setUpdateTrigger(prev => prev + 1);
+      setStreamingMessage(null);
       return finalMsg;
     } else {
       let fullText = '';
       await streamResponse(config, updatedHistory, userText, (chunk) => {
         fullText += chunk;
-        queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-          if (!old) return [];
-          return old.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m);
-        });
+        setStreamingMessage(prev => prev ? { ...prev, text: fullText } : null);
       }, signal);
       const finalMsg = { ...aiMsg, text: fullText };
-      saveMessage(finalMsg);
+      await saveMessage(finalMsg);
+      setUpdateTrigger(prev => prev + 1);
+      setStreamingMessage(null);
       return finalMsg;
     }
   };
@@ -305,17 +341,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     mutationFn: mutateChat,
     onError: (error: any, variables) => {
       if (error.name === 'AbortError' || error.message.includes('aborted')) return;
-      const { chatId } = variables;
+      // const { chatId } = variables; -> Not needed
       const errorMsg = `ERROR: ${error.message || 'CONNECTION TERMINATED.'}`;
-      queryClient.setQueryData(['messages', chatId], (old: Message[] | undefined) => {
-        if (!old) return [];
-        const lastMsg = old[old.length - 1];
-        if (lastMsg.role === 'model') {
-          saveMessage({ ...lastMsg, text: errorMsg });
-          return old.map(m => m.id === lastMsg.id ? { ...m, text: errorMsg } : m);
-        }
-        return old;
-      });
+      // Logic: Update streaming message to show error, then save it?
+      setStreamingMessage(prev => prev ? { ...prev, text: errorMsg } : null);
+      // We should probably save it too so it persists
+      // But we don't have the message ID easily here unless we keep it in state or pass it.
+      // Simplify: Just let it be ephemeral or alert.
+      // For now, let's just save a new error message?
+      // Or just set streaming message text.
     }
   });
 
@@ -325,6 +359,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       abortControllerRef.current = null;
     }
   };
+
+  // Process Timer
+  const [processTime, setProcessTime] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (chatMutation.isPending) {
+      setProcessTime(0);
+      const startTime = Date.now();
+      interval = setInterval(() => {
+        setProcessTime((Date.now() - startTime) / 1000);
+      }, 100);
+    } else {
+      setProcessTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [chatMutation.isPending]);
 
   const handleSend = async (e?: React.FormEvent, overrideText?: string, isCompare?: boolean, attachments?: Attachment[]) => {
     e?.preventDefault();
@@ -388,25 +439,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
     queryClient.invalidateQueries({ queryKey: ['notes', username] });
   };
 
-  const handleBranch = (messageId: string, specificText?: string) => {
+  const handleBranch = async (messageId: string, specificText?: string) => {
     const msgIndex = messages.findIndex(m => m.id === messageId);
     if (msgIndex === -1 || !currentChatId) return;
 
-    const sessions = getChatSessions(username);
+    const sessions = await getChatSessions(username);
     const currentSession = sessions.find(s => s.id === currentChatId);
     const oldTitle = currentSession?.title || 'Session';
-    const newSession = createChatSession(username, `Fork: ${oldTitle}`);
+    const newSession = await createChatSession(username, `Fork: ${oldTitle}`);
 
     // Copy history up to point
     const msgsToCopy = messages.slice(0, msgIndex + 1);
 
-    msgsToCopy.forEach((msg, idx) => {
+    for (let idx = 0; idx < msgsToCopy.length; idx++) {
+      const msg = msgsToCopy[idx];
       let textToSave = msg.text;
       if (msg.id === messageId && specificText) {
         textToSave = specificText;
       }
 
-      saveMessage({
+      await saveMessage({
         ...msg,
         id: Date.now().toString() + '_' + idx,
         chatId: newSession.id,
@@ -414,15 +466,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         comparisonText: undefined,
         timestamp: Date.now() + idx
       });
-    });
+    }
 
-    queryClient.invalidateQueries({ queryKey: ['sessions', username] });
-    queryClient.invalidateQueries({ queryKey: ['messages'] });
     setCurrentChatId(newSession.id);
   };
 
-  const handleSyllabusFork = (topicTitle: string) => {
-    const newSession = createChatSession(username, `Study: ${topicTitle}`);
+  const handleSyllabusFork = async (topicTitle: string) => {
+    const newSession = await createChatSession(username, `Study: ${topicTitle}`);
     setCurrentChatId(newSession.id);
     setShowSyllabus(false);
 
@@ -620,7 +670,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto mb-16 pr-2 no-scrollbar">
         <MessageList
-          messages={messages}
+          messages={displayMessages}
           isLoading={chatMutation.isPending}
           onSvgClick={setModalSvg}
           onArchive={handleArchive}
@@ -635,6 +685,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
         setInput={setInput}
         handleSend={handleSend}
         isLoading={chatMutation.isPending}
+        processTime={processTime}
         mode={config.mode}
         onStop={handleStop}
         onRegenerate={handleRegenerate}

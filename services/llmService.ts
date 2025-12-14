@@ -453,9 +453,16 @@ const callGoogle = async (config: AppConfig, history: Message[], prompt: string,
   // but we can break the loop.
   const result = await chatSession.sendMessageStream({ message: { parts } });
 
-  for await (const chunk of result) {
+  // Handle both result.stream (standard) and direct result iteration (some versions)
+  const iterable = (result as any).stream || result;
+
+  for await (const chunk of iterable) {
     if (signal?.aborted) break;
-    if (chunk.text) onChunk(chunk.text);
+
+    // Handle chunk.text() (method) vs chunk.text (property)
+    const text = typeof (chunk as any).text === 'function' ? (chunk as any).text() : (chunk as any).text;
+
+    if (text) onChunk(text);
   }
 };
 
