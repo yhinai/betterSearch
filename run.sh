@@ -32,6 +32,8 @@ echo "🐍 Starting Backend (Port 8001)..."
 cd backend
 # Use PYTHONUNBUFFERED to ensure logs show up immediately
 export PYTHONUNBUFFERED=1
+# Activate virtual environment
+source venv/bin/activate
 python3 server.py &
 BACKEND_PID=$!
 cd ..

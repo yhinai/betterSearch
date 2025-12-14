@@ -108,7 +108,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
                   className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words w-full"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  <MarkdownRenderer content={msg.text} onSvgClick={onSvgClick} />
+                  <MarkdownRenderer content={msg.text} onSvgClick={onSvgClick} isStreaming={isLoading && msg.id === lastMsg?.id} />
                 </div>
               </div>
 
@@ -122,7 +122,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
                   className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words w-full"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  <MarkdownRenderer content={msg.comparisonText} onSvgClick={onSvgClick} />
+                  <MarkdownRenderer content={msg.comparisonText} onSvgClick={onSvgClick} isStreaming={isLoading && msg.id === lastMsg?.id} />
                 </div>
               </div>
             </div>
@@ -168,7 +168,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onSvgCli
                 style={{ color: msg.role === 'model' ? 'var(--text-secondary)' : 'var(--text-primary)' }}
               >
                 {msg.role === 'model' ? (
-                  <MarkdownRenderer content={msg.text} onSvgClick={onSvgClick} />
+                  <MarkdownRenderer content={msg.text} onSvgClick={onSvgClick} isStreaming={isLoading && msg.id === lastMsg?.id} />
                 ) : (
                   msg.text
                 )}

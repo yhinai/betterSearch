@@ -526,6 +526,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
         </button>
 
+        {/* Command Palette */}
+        <button
+          onClick={() => setShowCommandPalette(true)}
+          className="h-8 px-2 flex items-center gap-1.5 rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-theme-primary"
+          title="Command Palette (⌘K)"
+        >
+          <i className="fa-solid fa-terminal text-xs"></i>
+          <span className="text-[10px] font-bold tracking-wider">⌘K</span>
+        </button>
+
         {/* Settings */}
         <button
           onClick={() => setShowSettings(true)}
