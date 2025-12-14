@@ -236,5 +236,7 @@ async def clear_group():
 if __name__ == "__main__":
     import uvicorn
     print("🧠 Neural Bridge Starting...")
-    print(f"📡 API Key: {API_KEY[:20]}...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"📡 API Key: {API_KEY[:20] if API_KEY else 'NOT SET'}...")
+    # Matches frontend port 8001
+    uvicorn.run(app, host="0.0.0.0", port=8001)
+

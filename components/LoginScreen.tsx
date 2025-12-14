@@ -36,7 +36,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           >
             <span className="text-[10px] tracking-[0.3em] uppercase" style={{ color: 'var(--text-tertiary)' }}>System_Access_Port</span>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-2">HIVE_MIND</h1>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-2">NEXUS</h1>
           <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--text-muted)' }}>Collaborative Cognitive Architecture</p>
         </div>
 

@@ -443,7 +443,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', borderColor: 'var(--border-primary)' }}
         >
           <i className="fa-solid fa-network-wired text-xs"></i>
-          <span className="hidden md:inline">HIVE</span>
+          <span className="hidden md:inline">NEXUS</span>
           {hiveMessages.length > 0 && (
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: 'var(--accent-cyan)' }}></span>

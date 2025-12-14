@@ -74,7 +74,7 @@ const HiveModal: React.FC<HiveModalProps> = ({ username, onClose, onSvgClick }) 
         
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl text-cyan-400 font-bold tracking-widest uppercase flex items-center gap-2">
-            <i className="fa-solid fa-network-wired text-sm"></i> The Hive // Incoming
+            <i className="fa-solid fa-network-wired text-sm"></i> Nexus // Incoming
           </h2>
           <button onClick={onClose} className="text-white/50 hover:text-white">
             <i className="fa-solid fa-times"></i>

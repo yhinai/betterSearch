@@ -331,7 +331,7 @@ const LiveInterface: React.FC<LiveInterfaceProps> = ({ config, onClose, username
         <div className="text-[9px] text-white/20 text-center max-w-xs leading-relaxed">
           Latency: Low // Protocol: WebRTC // Encryption: Local-Only
           <br />
-          Speak clearly. The Hive is listening.
+          Speak clearly. Nexus is listening.
         </div>
       </div>
     </div>

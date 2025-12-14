@@ -45,7 +45,7 @@ Test your retention immediately.
 *   **One-Click Archive**: Save any chat insight to your permanent database.
 *   **Auto-Titling**: The AI analyzes the content and generates a semantic title automatically.
 *   **Document Import**: Drag & drop PDFs or Images. The AI extracts the text, formats it into Markdown, and saves it to your archives.
-*   **Peer Transmission (The Hive)**: Send notes to other users on the system. If the recipient exists, the knowledge is transmitted to their "Incoming" inbox.
+*   **Peer Transmission (Nexus)**: Send notes to other users on the system. If the recipient exists, the knowledge is transmitted to their "Incoming" inbox.
 
 ---
 
@@ -112,9 +112,9 @@ Designed for deep work and low eye strain.
 3.  **Commands**:
     *   `Visualise X`: Forces an SVG schematic generation.
     *   `Archive`: Hover over a message and click "+ ARCHIVE" to save it.
-4.  **The Hive**:
+4.  **Nexus**:
     *   Open **NOTES**. Select a note. Click **TRANSMIT**. Enter a recipient's username.
-    *   The recipient will see a notification in **HIVE** to accept or reject the data.
+    *   The recipient will see a notification in **NEXUS** to accept or reject the data.
 
 ---
 
