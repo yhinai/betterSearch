@@ -39,7 +39,7 @@ export interface GraphonHealthResponse {
  */
 export const checkBridgeHealth = async (): Promise<GraphonHealthResponse> => {
     try {
-        const res = await fetch(`${BRIDGE_URL}/health`);
+        const res = await fetch(`${BRIDGE_URL}/health`, { mode: 'cors' });
         return await res.json();
     } catch (e) {
         return {
@@ -61,7 +61,8 @@ export const uploadToGraphon = async (files: File[]): Promise<GraphonIngestRespo
 
     const res = await fetch(`${BRIDGE_URL}/ingest`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        mode: 'cors'
     });
 
     if (!res.ok) {
@@ -88,7 +89,8 @@ export const queryGraphon = async (
 
     const res = await fetch(`${BRIDGE_URL}/query`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        mode: 'cors'
     });
 
     if (!res.ok) {
@@ -104,7 +106,7 @@ export const queryGraphon = async (
  */
 export const getCurrentGroup = async (): Promise<{ group_id: string | null }> => {
     try {
-        const res = await fetch(`${BRIDGE_URL}/group`);
+        const res = await fetch(`${BRIDGE_URL}/group`, { mode: 'cors' });
         return await res.json();
     } catch (e) {
         return { group_id: null };
@@ -115,7 +117,7 @@ export const getCurrentGroup = async (): Promise<{ group_id: string | null }> =>
  * Clear the active knowledge graph
  */
 export const clearGraphonGroup = async (): Promise<void> => {
-    await fetch(`${BRIDGE_URL}/group`, { method: 'DELETE' });
+    await fetch(`${BRIDGE_URL}/group`, { method: 'DELETE', mode: 'cors' });
 };
 
 /**

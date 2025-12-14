@@ -16,6 +16,13 @@ export const streamResponse = async (
     try {
       onChunk("🧠 *Accessing Neural Graph...*\n\n");
 
+      // Verify connection first
+      try {
+        await fetch('http://localhost:8001/health', { mode: 'cors' });
+      } catch (e) {
+        throw new Error("Neural Bridge server is offline. Please start it with 'python backend/server.py'");
+      }
+
       const graphonResponse = await queryGraphon(prompt, config.graphonGroupId);
 
       // Stream the Graphon answer
