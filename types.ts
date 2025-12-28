@@ -36,8 +36,10 @@ export interface AppConfig {
   model: string;
   mode: 'direct' | 'socratic';
   systemInstruction?: string;
-
   isDeepResearch?: boolean;
+  // ElevenLabs Voice Configuration
+  elevenLabsApiKey?: string;
+  elevenLabsAgentId?: string;
 }
 
 export interface QuizQuestion {

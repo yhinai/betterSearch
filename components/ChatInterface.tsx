@@ -122,7 +122,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
   const toggleModel = () => {
     setConfig(prev => ({
       ...prev,
-      model: prev.model === MODELS.GEMINI_3 ? MODELS.GEMINI_2_5 : MODELS.GEMINI_3
+      model: prev.model === MODELS.GEMINI_3 ? MODELS.GEMINI_FLASH : MODELS.GEMINI_3
     }));
   };
 
@@ -591,6 +591,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           <span className="text-[10px] font-bold tracking-wider">⌘K</span>
         </button>
 
+        {/* Voice Interface Trigger */}
+        <button
+          onClick={() => setShowLive(true)}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 transition-all text-theme-secondary hover:text-cyan-400 animate-pulse"
+          title="Start Voice Session"
+        >
+          <i className="fa-solid fa-microphone"></i>
+        </button>
+
         {/* Settings */}
         <button
           onClick={() => setShowSettings(true)}
@@ -655,6 +664,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
             config={config}
             onClose={() => setShowLive(false)}
             username={username}
+            currentMode={config.mode}
+            isDeepResearch={config.isDeepResearch}
+            handlers={{
+              onNewSession: handleNewSession,
+              onToggleMode: toggleMode,
+              onToggleTheme: toggleTheme,
+              onToggleDeepResearch: () => setConfig(prev => ({ ...prev, isDeepResearch: !prev.isDeepResearch })),
+              onShowHistory: () => { setShowLive(false); setShowHistory(true); },
+              onShowNotes: () => { setShowLive(false); setShowNotes(true); },
+              onShowSettings: () => { setShowLive(false); setShowSettings(true); },
+              onShowSyllabus: () => { setShowLive(false); setShowSyllabus(true); },
+              onShowHive: () => { setShowLive(false); setShowHive(true); },
+              onStop: handleStop,
+              onSendMessage: (msg) => { setShowLive(false); setInput(msg); handleSend(); },
+              onTriggerVisual: setModalSvg,
+              onLogout: onLogout,
+            }}
           />
         )}
 
@@ -682,6 +708,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
       <InputArea
         input={input}
         setInput={setInput}
+        elevenLabsApiKey={config.elevenLabsApiKey || import.meta.env.VITE_ELEVENLABS_API_KEY}
         handleSend={handleSend}
         isLoading={chatMutation.isPending}
         processTime={processTime}

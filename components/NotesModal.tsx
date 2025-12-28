@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getNotes, deleteNote, searchNotes, saveNote, sendHiveNote, checkUserExists } from '../services/dbService';
 import { processDocument } from '../services/llmService';
+import { speakText } from '../services/elevenService';
 import { Note, AppConfig } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 
@@ -24,6 +25,9 @@ const NotesModal: React.FC<NotesModalProps> = ({ username, onClose, onSvgClick, 
   const [recipient, setRecipient] = useState('');
   const [transmitStatus, setTransmitStatus] = useState<'idle' | 'success' | 'error' | 'not_found'>('idle');
 
+  // Audio playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const notes = useLiveQuery(
@@ -72,6 +76,43 @@ const NotesModal: React.FC<NotesModalProps> = ({ username, onClose, onSvgClick, 
 
     transmitMutation.mutate({ note: selectedNote, recipient: targetUser });
   };
+
+  // TTS: Listen to note content
+  const handleListen = useCallback(async () => {
+    if (!selectedNote) return;
+
+    const apiKey = config.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      alert('ElevenLabs API Key required. Configure in Settings.');
+      return;
+    }
+
+    // Stop current audio if playing
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setCurrentAudio(null);
+      setIsPlaying(false);
+      return;
+    }
+
+    setIsPlaying(true);
+    try {
+      const audio = await speakText(
+        selectedNote.content.substring(0, 5000), // Limit to 5000 chars
+        apiKey,
+        { modelId: 'eleven_flash_v2_5' }
+      );
+      setCurrentAudio(audio);
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentAudio(null);
+      };
+    } catch (err: any) {
+      console.error('TTS Error:', err);
+      setIsPlaying(false);
+    }
+  }, [selectedNote, config.elevenLabsApiKey, currentAudio]);
 
   const safeDate = (timestamp: number) => {
     try {
@@ -169,9 +210,9 @@ const NotesModal: React.FC<NotesModalProps> = ({ username, onClose, onSvgClick, 
                     type="submit"
                     disabled={transmitStatus !== 'idle'}
                     className={`px-3 py-2 text-xs font-bold uppercase transition-all flex items-center gap-2 ${transmitStatus === 'success' ? 'bg-emerald-600 text-white' :
-                        transmitStatus === 'error' ? 'bg-red-600 text-white' :
-                          transmitStatus === 'not_found' ? 'bg-amber-600 text-white' :
-                            'bg-cyan-900/50 text-cyan-400 border border-cyan-400 hover:bg-cyan-400 hover:text-black'
+                      transmitStatus === 'error' ? 'bg-red-600 text-white' :
+                        transmitStatus === 'not_found' ? 'bg-amber-600 text-white' :
+                          'bg-cyan-900/50 text-cyan-400 border border-cyan-400 hover:bg-cyan-400 hover:text-black'
                       }`}
                   >
                     {transmitStatus === 'success' ? <i className="fa-solid fa-check"></i> :
@@ -188,13 +229,29 @@ const NotesModal: React.FC<NotesModalProps> = ({ username, onClose, onSvgClick, 
                   </button>
                 </form>
               ) : (
-                <button
-                  onClick={() => setIsTransmitting(true)}
-                  className="bg-white/5 hover:bg-white hover:text-black border border-white/20 transition-all px-4 py-2 uppercase text-xs tracking-widest font-bold flex items-center gap-2"
-                  title="Send to another user"
-                >
-                  <i className="fa-solid fa-share-nodes"></i> Transmit
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Listen Button */}
+                  <button
+                    onClick={handleListen}
+                    className={`border transition-all px-4 py-2 uppercase text-xs tracking-widest font-bold flex items-center gap-2 ${isPlaying
+                        ? 'bg-purple-600 text-white border-purple-500 animate-pulse'
+                        : 'bg-white/5 hover:bg-purple-600 hover:text-white border-white/20'
+                      }`}
+                    title={isPlaying ? "Stop narration" : "Listen to note"}
+                  >
+                    <i className={`fa-solid ${isPlaying ? 'fa-stop' : 'fa-volume-high'}`}></i>
+                    {isPlaying ? 'Stop' : 'Listen'}
+                  </button>
+
+                  {/* Transmit Button */}
+                  <button
+                    onClick={() => setIsTransmitting(true)}
+                    className="bg-white/5 hover:bg-white hover:text-black border border-white/20 transition-all px-4 py-2 uppercase text-xs tracking-widest font-bold flex items-center gap-2"
+                    title="Send to another user"
+                  >
+                    <i className="fa-solid fa-share-nodes"></i> Transmit
+                  </button>
+                </div>
               )}
             </div>
 

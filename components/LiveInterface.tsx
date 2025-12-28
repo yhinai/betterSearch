@@ -1,339 +1,366 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useConversation } from '@elevenlabs/react';
 import { AppConfig } from '../types';
+import { getSignedUrl } from '../services/elevenService';
+import { SOCRATIC_SYSTEM_INSTRUCTION } from '../constants';
+
+// Voice command handlers interface - matches ChatInterface actions
+export interface VoiceCommandHandlers {
+  onNewSession?: () => void;
+  onToggleMode?: () => void;
+  onToggleTheme?: () => void;
+  onToggleDeepResearch?: () => void;
+  onShowHistory?: () => void;
+  onShowNotes?: () => void;
+  onShowSettings?: () => void;
+  onShowSyllabus?: () => void;
+  onShowHive?: () => void;
+  onStop?: () => void;
+  onSendMessage?: (message: string) => void;
+  onTriggerVisual?: (concept: string) => void;
+  onLogout?: () => void;
+}
 
 interface LiveInterfaceProps {
   config: AppConfig;
   onClose: () => void;
   username: string;
+  handlers: VoiceCommandHandlers;
+  currentMode?: 'direct' | 'socratic';
+  isDeepResearch?: boolean;
 }
 
-const LiveInterface: React.FC<LiveInterfaceProps> = ({ config, onClose, username }) => {
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('connecting');
-  const [volume, setVolume] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>(0);
+type ConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected';
 
-  // Audio Context Refs
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const sessionRef = useRef<any>(null);
-  const isConnectedRef = useRef<boolean>(false);
+const LiveInterface: React.FC<LiveInterfaceProps> = ({
+  config,
+  onClose,
+  username,
+  handlers,
+  currentMode,
+  isDeepResearch
+}) => {
+  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [lastCommand, setLastCommand] = useState<string>('');
 
-  // Playback Refs
-  const nextStartTimeRef = useRef<number>(0);
-  const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
+  // ElevenLabs Conversation Hook with Comprehensive Client Tools
+  const conversation = useConversation({
+    clientTools: {
+      // === NAVIGATION COMMANDS ===
+
+      startNewChat: async () => {
+        console.log("[Voice] Starting new chat...");
+        setLastCommand("Starting new chat");
+        handlers.onNewSession?.();
+        return "New chat session started. You're now in a fresh conversation.";
+      },
+
+      openHistory: async () => {
+        console.log("[Voice] Opening history...");
+        setLastCommand("Opening history");
+        handlers.onShowHistory?.();
+        return "Chat history is now open. You can see all your previous conversations.";
+      },
+
+      openNotes: async () => {
+        console.log("[Voice] Opening notes...");
+        setLastCommand("Opening notes");
+        handlers.onShowNotes?.();
+        return "Notes archive is now open. You can view or listen to your saved notes.";
+      },
+
+      openSettings: async () => {
+        console.log("[Voice] Opening settings...");
+        setLastCommand("Opening settings");
+        handlers.onShowSettings?.();
+        return "Settings panel is open. You can configure the app.";
+      },
+
+      openSyllabus: async () => {
+        console.log("[Voice] Opening syllabus...");
+        setLastCommand("Opening syllabus");
+        handlers.onShowSyllabus?.();
+        return "Syllabus generated and displayed.";
+      },
+
+      openHive: async () => {
+        console.log("[Voice] Opening hive...");
+        setLastCommand("Opening Hive");
+        handlers.onShowHive?.();
+        return "Hive transmissions opened. You can see messages from other users.";
+      },
+
+      // === MODE COMMANDS ===
+
+      toggleMode: async () => {
+        console.log("[Voice] Toggling mode...");
+        setLastCommand("Toggling mode");
+        handlers.onToggleMode?.();
+        const newMode = currentMode === 'direct' ? 'socratic' : 'direct';
+        return `Switched to ${newMode} mode. ${newMode === 'socratic' ? "I'll now ask guiding questions instead of direct answers." : "I'll now provide direct answers."}`;
+      },
+
+      setSocraticMode: async () => {
+        console.log("[Voice] Setting Socratic mode...");
+        if (currentMode !== 'socratic') {
+          handlers.onToggleMode?.();
+        }
+        setLastCommand("Socratic Mode Enabled");
+        return "Socratic mode enabled. I'll guide you with questions to help you discover answers yourself.";
+      },
+
+      setDirectMode: async () => {
+        console.log("[Voice] Setting Direct mode...");
+        if (currentMode !== 'direct') {
+          handlers.onToggleMode?.();
+        }
+        setLastCommand("Direct Mode Enabled");
+        return "Direct mode enabled. I'll provide straightforward answers to your questions.";
+      },
+
+      toggleDeepResearch: async () => {
+        console.log("[Voice] Toggling deep research...");
+        setLastCommand("Toggling Deep Research");
+        handlers.onToggleDeepResearch?.();
+        return isDeepResearch
+          ? "Deep research mode disabled. Switching to normal responses."
+          : "Deep research mode enabled. I'll now conduct multi-step research for complex questions.";
+      },
+
+      enableDeepResearch: async () => {
+        console.log("[Voice] Enabling deep research...");
+        setLastCommand("Deep Research Enabled");
+        if (!isDeepResearch) {
+          handlers.onToggleDeepResearch?.();
+        }
+        return "Deep research mode is now active. Ask me complex questions and I'll research thoroughly.";
+      },
+
+      disableDeepResearch: async () => {
+        console.log("[Voice] Disabling deep research...");
+        setLastCommand("Deep Research Disabled");
+        if (isDeepResearch) {
+          handlers.onToggleDeepResearch?.();
+        }
+        return "Deep research mode disabled. Responses will be faster and more direct.";
+      },
+
+      // === UI COMMANDS ===
+
+      toggleTheme: async () => {
+        console.log("[Voice] Toggling theme...");
+        setLastCommand("Toggling theme");
+        handlers.onToggleTheme?.();
+        return "Theme switched. The interface colors have been updated.";
+      },
+
+      setDarkMode: async () => {
+        console.log("[Voice] Setting dark mode...");
+        setLastCommand("Dark Mode");
+        // Will need to check current theme and only toggle if needed
+        handlers.onToggleTheme?.();
+        return "Dark mode activated.";
+      },
+
+      setLightMode: async () => {
+        console.log("[Voice] Setting light mode...");
+        setLastCommand("Light Mode");
+        handlers.onToggleTheme?.();
+        return "Light mode activated.";
+      },
+
+      // === CONTROL COMMANDS ===
+
+      stopGeneration: async () => {
+        console.log("[Voice] Stopping generation...");
+        setLastCommand("Stopping...");
+        handlers.onStop?.();
+        return "Generation stopped.";
+      },
+
+      closeVoiceInterface: async () => {
+        console.log("[Voice] Closing voice interface...");
+        setLastCommand("Closing...");
+        setTimeout(() => onClose(), 500);
+        return "Closing voice interface. Goodbye!";
+      },
+
+      logout: async () => {
+        console.log("[Voice] Logging out...");
+        setLastCommand("Logging out...");
+        handlers.onLogout?.();
+        return "Logging you out. Goodbye!";
+      },
+
+      // === CONTENT COMMANDS ===
+
+      sendMessage: async ({ message }: { message: string }) => {
+        console.log("[Voice] Sending message:", message);
+        setLastCommand(`Sending: ${message.substring(0, 20)}...`);
+        handlers.onSendMessage?.(message);
+        return "Message sent. I'll process that in the main chat.";
+      },
+
+      askQuestion: async ({ question }: { question: string }) => {
+        console.log("[Voice] Asking question:", question);
+        setLastCommand(`Asking: ${question.substring(0, 20)}...`);
+        handlers.onSendMessage?.(question);
+        return "Question submitted. Check the main chat for the response.";
+      },
+
+      // === VISUALIZATION COMMANDS ===
+
+      triggerVisualization: async ({ concept, description }: { concept: string; description?: string }) => {
+        console.log("[Voice] Triggering visualization:", concept);
+        setLastCommand(`Visualizing: ${concept}`);
+        handlers.onTriggerVisual?.(concept);
+        return "Visualization diagram generated and displayed.";
+      },
+
+      generateDiagram: async ({ topic }: { topic: string }) => {
+        console.log("[Voice] Generating diagram for:", topic);
+        setLastCommand(`Diagram: ${topic}`);
+        handlers.onTriggerVisual?.(topic);
+        return "Diagram generated for " + topic;
+      },
+
+      // === INFO COMMANDS ===
+
+      getStatus: async () => {
+        return `Current mode: ${currentMode}. Deep research: ${isDeepResearch ? 'enabled' : 'disabled'}. Voice link: active.`;
+      },
+
+      listCommands: async () => {
+        return `You can say: "start new chat", "open history", "open notes", "open settings", "switch to socratic mode", "enable deep research", "toggle theme", "send message", "generate diagram", "stop", or "close voice".`;
+      },
+    },
+
+    onConnect: () => {
+      console.log("[ElevenLabs] Neural Link Active");
+      setStatus('connected');
+      setErrorMessage('');
+    },
+    onDisconnect: () => {
+      console.log("[ElevenLabs] Link Terminated");
+      setStatus('disconnected');
+    },
+    onError: (error) => {
+      console.error("[ElevenLabs] Error:", error);
+      setStatus('error');
+      setErrorMessage(error?.message || 'Connection failed');
+    },
+    onMessage: (message) => {
+      console.log("[ElevenLabs] Message:", message);
+    }
+  });
+
+  // Start the voice session
+  const startSession = useCallback(async () => {
+    // Use config values or fall back to environment variables
+    const apiKey = config.elevenLabsApiKey || import.meta.env.VITE_ELEVENLABS_API_KEY || '';
+    const agentId = config.elevenLabsAgentId || import.meta.env.VITE_ELEVENLABS_AGENT_ID || '';
+
+    if (!apiKey || !agentId) {
+      setStatus('error');
+      setErrorMessage('ElevenLabs API Key and Agent ID required. Configure in Settings.');
+      return;
+    }
+
+    setStatus('connecting');
+    setErrorMessage('');
+
+    try {
+      const signedUrl = await getSignedUrl(agentId, apiKey);
+      await conversation.startSession({ signedUrl });
+    } catch (error: any) {
+      console.error("[ElevenLabs] Failed to start session:", error);
+      setStatus('error');
+      setErrorMessage(error?.message || 'Failed to connect');
+    }
+  }, [config.elevenLabsApiKey, config.elevenLabsAgentId, conversation]);
+
+  const stopSession = useCallback(async () => {
+    try {
+      await conversation.endSession();
+    } catch (error) {
+      console.warn("[ElevenLabs] Error ending session:", error);
+    }
+    setStatus('disconnected');
+  }, [conversation]);
 
   useEffect(() => {
     startSession();
-    return () => stopSession();
+    return () => { stopSession(); };
   }, []);
 
-  // Visualizer Loop
-  useEffect(() => {
-    const render = () => {
-      if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext('2d');
-      if (!ctx) return;
-
-      const w = canvasRef.current.width;
-      const h = canvasRef.current.height;
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0)';
-      ctx.fillRect(0, 0, w, h);
-
-      // Draw Oscilloscope
-      ctx.beginPath();
-      ctx.moveTo(0, h / 2);
-
-      const distinctness = status === 'connected' ? 1 : 0.1;
-      const amp = Math.max(volume * 150, 2) * distinctness;
-      const freq = status === 'connected' ? 0.05 : 0.01;
-      const speed = Date.now() * 0.005;
-
-      for (let x = 0; x < w; x++) {
-        const y = h / 2 + Math.sin(x * freq + speed) * amp * Math.sin(x * 0.01);
-        ctx.lineTo(x, y);
-      }
-
-      ctx.strokeStyle = status === 'connected' ? '#22d3ee' : '#555'; // Cyan or Gray
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Glow effect
-      if (status === 'connected') {
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#22d3ee';
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-
-      animationRef.current = requestAnimationFrame(render);
-    };
-    render();
-
-    return () => cancelAnimationFrame(animationRef.current);
-  }, [volume, status]);
-
-  const startSession = async () => {
-    if (status === 'connected') return;
-    setStatus('connecting');
-    isConnectedRef.current = false;
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: config.apiKey || process.env.API_KEY });
-
-      // Setup Audio Contexts
-      // Use system default sample rate to prevent "different sample-rate" error
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioContextClass();
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-      audioContextRef.current = ctx;
-
-      const inputCtx = new AudioContextClass();
-      if (inputCtx.state === 'suspended') {
-        await inputCtx.resume();
-      }
-
-      // Get Mic Stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-
-      // Connect to Gemini Live
-      const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-          },
-          systemInstruction: `You are betterSearch, a rigorous academic debate partner for ${username}. Keep responses concise, high-density, and spoken in a calm, cyberpunk-intellectual tone. Do not be overly polite. Focus on facts and logic.`,
-        },
-        callbacks: {
-          onopen: () => {
-            setStatus('connected');
-            isConnectedRef.current = true;
-
-            // Setup Input Processing
-            const source = inputCtx.createMediaStreamSource(stream);
-            const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-
-            processor.onaudioprocess = (e) => {
-              if (!isConnectedRef.current) return; // Guard against sending on closed connection
-
-              const inputData = e.inputBuffer.getChannelData(0);
-
-              // Calculate volume for visualizer
-              let sum = 0;
-              for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-              setVolume(Math.sqrt(sum / inputData.length));
-
-              // DOWNSAMPLE LOGIC (System Rate -> 16000Hz)
-              const targetRate = 16000;
-              const sourceRate = inputCtx.sampleRate;
-              let processedData = inputData;
-
-              if (sourceRate !== targetRate) {
-                const ratio = sourceRate / targetRate;
-                const newLength = Math.floor(inputData.length / ratio);
-                processedData = new Float32Array(newLength);
-                for (let i = 0; i < newLength; i++) {
-                  const offset = i * ratio;
-                  const idx = Math.floor(offset);
-                  // Linear interpolation
-                  const val1 = inputData[idx];
-                  const val2 = idx + 1 < inputData.length ? inputData[idx + 1] : val1;
-                  const frac = offset - idx;
-                  processedData[i] = val1 + (val2 - val1) * frac;
-                }
-              }
-
-              // PCM Conversion
-              const pcmData = new Int16Array(processedData.length);
-              for (let i = 0; i < processedData.length; i++) {
-                pcmData[i] = Math.max(-1, Math.min(1, processedData[i])) * 32767;
-              }
-
-              const base64 = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
-
-              sessionPromise.then(session => {
-                if (!isConnectedRef.current) return;
-                try {
-                  session.sendRealtimeInput({
-                    media: {
-                      mimeType: 'audio/pcm;rate=16000',
-                      data: base64
-                    }
-                  });
-                } catch (err) {
-                  // Suppress network errors during disconnects
-                  console.warn("Input send failed", err);
-                }
-              });
-            };
-
-            source.connect(processor);
-            processor.connect(inputCtx.destination);
-
-            inputSourceRef.current = source;
-            processorRef.current = processor;
-          },
-          onmessage: async (msg: LiveServerMessage) => {
-            const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (audioData) {
-              playAudioChunk(audioData, ctx);
-            }
-          },
-          onclose: () => {
-            setStatus('disconnected');
-            isConnectedRef.current = false;
-          },
-          onerror: (e) => {
-            console.error("Live Session Error:", e);
-            setStatus('error');
-            isConnectedRef.current = false;
-          }
-        }
-      });
-
-      sessionRef.current = sessionPromise;
-
-    } catch (e) {
-      console.error("Failed to start Live session", e);
-      setStatus('error');
-      isConnectedRef.current = false;
-    }
-  };
-
-  const playAudioChunk = async (base64: string, ctx: AudioContext) => {
-    try {
-      const binaryString = atob(base64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-
-      const int16 = new Int16Array(bytes.buffer);
-      const float32 = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
-
-      // Gemini returns audio at 24000Hz. We tell the buffer this.
-      // The AudioContext (running at system rate, e.g. 48000Hz) will handle the resampling playback.
-      const buffer = ctx.createBuffer(1, float32.length, 24000);
-      buffer.getChannelData(0).set(float32);
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-
-      const now = ctx.currentTime;
-      // Schedule next chunk
-      const start = Math.max(now, nextStartTimeRef.current);
-      source.start(start);
-      nextStartTimeRef.current = start + buffer.duration;
-
-      audioQueueRef.current.push(source);
-      source.onended = () => {
-        audioQueueRef.current = audioQueueRef.current.filter(s => s !== source);
-      };
-
-      // Visualize output volume roughly
-      setVolume(0.5); // Artificial visualizer bump for AI talking
-
-    } catch (e) {
-      console.error("Audio decode error", e);
-    }
-  };
-
-  const stopSession = () => {
-    isConnectedRef.current = false;
-
-    // Stop Microphone Stream
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
-      mediaStreamRef.current = null;
-    }
-
-    // Cleanup Audio
-    inputSourceRef.current?.disconnect();
-    processorRef.current?.disconnect();
-    audioContextRef.current?.close();
-
-    // Close Session
-    if (sessionRef.current) {
-      sessionRef.current.then((s: any) => s.close());
-    }
-    setStatus('disconnected');
-  };
-
-  const handleReconnect = () => {
+  const handleReconnect = useCallback(() => {
     stopSession();
-    setTimeout(() => {
-      startSession();
-    }, 500);
-  };
+    setTimeout(() => startSession(), 500);
+  }, [startSession, stopSession]);
+
+  const isSpeaking = conversation.isSpeaking;
+  const isActive = status === 'connected';
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/95 backdrop-blur-xl animate-in fade-in duration-500">
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-900/10 via-black to-black pointer-events-none"></div>
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 animate-in slide-in-from-top-4 duration-500 pointer-events-none">
 
-      <div className="relative w-full max-w-lg p-8 flex flex-col items-center gap-8">
-        <div className="text-center space-y-2">
-          <div className="inline-block border border-cyan-500/30 px-3 py-1 bg-cyan-950/20 rounded-full mb-4">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-cyan-400 animate-pulse' : 'bg-red-500'}`}></div>
-              <span className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">Neural Voice Link</span>
-            </div>
-          </div>
-          <h2 className="text-3xl font-bold text-white tracking-wider">LIVE_SYNC</h2>
-          <p className="text-xs text-white/40 uppercase tracking-widest">
-            {status === 'connecting' ? 'Establishing Handshake...' :
-              status === 'connected' ? 'Channel Open // Speaking Allowed' :
-                status === 'error' ? 'Connection Interrupt' : 'Disconnected'}
-          </p>
+      {/* Dynamic Status Island */}
+      <div className="pointer-events-auto bg-black/80 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2 shadow-2xl flex items-center gap-4 transition-all duration-300 hover:scale-105 hover:bg-black/90 group">
+
+        {/* Status Indicator */}
+        <div className="relative w-3 h-3">
+          <div className={`absolute inset-0 rounded-full animate-ping opacity-75 ${isActive ? (isSpeaking ? 'bg-purple-500' : 'bg-cyan-500') :
+              status === 'connecting' ? 'bg-amber-500' : 'bg-red-500'
+            }`}></div>
+          <div className={`relative w-3 h-3 rounded-full ${isActive ? (isSpeaking ? 'bg-purple-400' : 'bg-cyan-400') :
+              status === 'connecting' ? 'bg-amber-400' : 'bg-red-500'
+            }`}></div>
         </div>
 
-        {/* Visualizer Canvas */}
-        <div className="w-full h-32 bg-black/50 border-y border-white/10 relative overflow-hidden">
-          <canvas
-            ref={canvasRef}
-            width={500}
-            height={128}
-            className="w-full h-full"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black pointer-events-none"></div>
-        </div>
-
-        <div className="flex gap-4">
-          {(status === 'error' || status === 'disconnected') && (
-            <button
-              onClick={handleReconnect}
-              className="w-16 h-16 rounded-full border border-cyan-500/50 text-cyan-400 hover:bg-cyan-950/30 transition-all flex items-center justify-center group"
-              title="Reconnect"
-            >
-              <i className="fa-solid fa-rotate-right text-xl group-hover:rotate-180 transition-transform duration-500"></i>
-            </button>
+        {/* Status Text */}
+        <div className="flex flex-col">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/90">
+            {status === 'connecting' ? 'Connecting...' :
+              status === 'connected' ? (isSpeaking ? 'Speaking' : 'Listening') :
+                status === 'error' ? 'Error' : 'Disconnected'}
+          </span>
+          {lastCommand && (
+            <span className="text-[8px] text-cyan-400/80 max-w-[120px] truncate animate-pulse">
+              {lastCommand}
+            </span>
           )}
-
-          <button
-            onClick={onClose}
-            className="w-16 h-16 rounded-full border border-red-500/50 text-red-500 hover:bg-red-950/30 transition-all flex items-center justify-center group"
-            title="End Session"
-          >
-            <i className="fa-solid fa-phone-slash text-xl group-hover:scale-110 transition-transform"></i>
-          </button>
         </div>
 
-        <div className="text-[9px] text-white/20 text-center max-w-xs leading-relaxed">
-          Latency: Low // Protocol: WebRTC // Encryption: Local-Only
-          <br />
-          Speak clearly. The Hive is listening.
-        </div>
+        {/* Controls */}
+        <div className="h-6 w-px bg-white/10 mx-1"></div>
+
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+          title="End Voice Session"
+        >
+          <i className="fa-solid fa-phone-slash text-xs"></i>
+        </button>
       </div>
+
+      {/* Error Toast */}
+      {errorMessage && (
+        <div className="pointer-events-auto px-4 py-2 bg-red-950/90 border border-red-500/30 rounded-lg text-red-200 text-xs backdrop-blur shadow-xl animate-in fade-in slide-in-from-top-2">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Connection Re-try */}
+      {(status === 'error' || status === 'disconnected') && (
+        <button
+          onClick={handleReconnect}
+          className="pointer-events-auto px-4 py-1.5 bg-cyan-950/80 border border-cyan-500/30 rounded-full text-cyan-400 text-[10px] uppercase font-bold hover:bg-cyan-900 transition-all flex items-center gap-2"
+        >
+          <i className="fa-solid fa-rotate-right"></i> Reconnect
+        </button>
+      )}
+
     </div>
   );
 };

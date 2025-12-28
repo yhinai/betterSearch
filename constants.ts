@@ -1,18 +1,20 @@
 
 
 export const MODELS = {
+  // Gemini Models
   GEMINI_3: 'gemini-3-pro-preview',
-  GEMINI_2_5: 'gemini-2.5-flash',
+  GEMINI_FLASH: 'gemini-3-flash-preview',
   // Complex reasoning
   THINKING: 'gemini-3-pro-preview',
   // Fast tasks
-  FAST: 'gemini-2.5-flash',
+  FAST: 'gemini-3-flash-preview',
   // Image Generation
   IMAGE_GEN: 'gemini-3-pro-image-preview',
   // Image Editing
   IMAGE_EDIT: 'gemini-2.5-flash-image',
-  // Live Audio
-  LIVE_AUDIO: 'gemini-2.5-flash-native-audio-preview-09-2025'
+  // ElevenLabs Voice Models
+  ELEVEN_FLASH: 'eleven_flash_v2_5',  // Low-latency voice
+  ELEVEN_TURBO: 'eleven_turbo_v2_5',  // Balanced quality
 };
 
 export const PROVIDERS = {
@@ -33,7 +35,10 @@ export const DEFAULT_CONFIG = {
   baseUrl: '',
   model: MODELS.GEMINI_3,
   mode: MODES.DIRECT,
-  systemInstruction: '' // Will be populated dynamically
+  systemInstruction: '', // Will be populated dynamically
+  // ElevenLabs Voice Configuration
+  elevenLabsApiKey: '', // Uses ELEVENLABS_API_KEY env var if empty
+  elevenLabsAgentId: '', // Uses ELEVENLABS_AGENT_ID env var if empty
 };
 
 export const VISUALIZATION_INSTRUCTION = `You are a visually thinking AI. You have the ability to generate Raw SVG visualizations for spatial layouts, diagrams, and artistic interfaces.

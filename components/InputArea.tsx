@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MODES } from '../constants';
 import { Attachment } from '../types';
+import { transcribeAudio } from '../services/elevenService';
 
 interface InputAreaProps {
   input: string;
@@ -13,6 +14,7 @@ interface InputAreaProps {
   onStop?: () => void;
   onRegenerate?: (isCompare: boolean) => void;
   hasHistory?: boolean;
+  elevenLabsApiKey?: string;
 }
 
 const InputArea: React.FC<InputAreaProps> = ({
@@ -24,12 +26,16 @@ const InputArea: React.FC<InputAreaProps> = ({
   mode,
   onStop,
   onRegenerate,
-  hasHistory
+  hasHistory,
+  elevenLabsApiKey
 }) => {
   const [isCompare, setIsCompare] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -56,6 +62,57 @@ const InputArea: React.FC<InputAreaProps> = ({
       onSubmit();
     }
     // Shift+Enter adds new line (default behavior)
+  };
+
+  const handleMicClick = async () => {
+    if (isRecording) {
+      // Stop recording
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+    } else {
+      // Start recording
+      const apiKey = elevenLabsApiKey || import.meta.env.VITE_ELEVENLABS_API_KEY;
+      if (!apiKey) {
+        alert("ElevenLabs API Key required for voice dictation");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+        chunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          const tracks = stream.getTracks();
+          tracks.forEach(track => track.stop());
+
+          // Show temporary loading state in input
+          const originalInput = input;
+          setInput(input + " (Transcribing...)");
+
+          try {
+            const text = await transcribeAudio(blob, apiKey, { languageCode: 'en' });
+            setInput(originalInput + (originalInput ? " " : "") + text);
+          } catch (err) {
+            console.error("STT Error:", err);
+            setInput(originalInput); // Revert on error
+            alert("Transcription failed");
+          }
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Microphone access denied:", err);
+        alert("Microphone access denied");
+      }
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +255,15 @@ const InputArea: React.FC<InputAreaProps> = ({
             <i className="fa-solid fa-rotate-right"></i>
           </button>
         )}
+
+        <button
+          onClick={handleMicClick}
+          className={`h-10 w-10 flex items-center justify-center transition-all rounded-sm ${isRecording ? 'bg-red-500/20 text-red-500 animate-pulse border-red-500' : 'hover:opacity-100 opacity-50 border-gray-700 text-gray-400'}`}
+          style={{ border: isRecording ? '1px solid var(--accent-red)' : '1px solid var(--border-primary)' }}
+          title={isRecording ? "Stop Recording" : "Dictate with ElevenLabs Scribe"}
+        >
+          <i className={`fa-solid ${isRecording ? 'fa-stop' : 'fa-microphone-lines'}`}></i>
+        </button>
 
         <button
           onClick={() => fileInputRef.current?.click()}
