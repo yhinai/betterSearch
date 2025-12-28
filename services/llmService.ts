@@ -8,7 +8,6 @@ import {
   MODES
 } from '../constants';
 import { Message, AppConfig, Note, Attachment } from '../types';
-import { queryGraphon, formatGraphonSources, uploadToGraphon } from './graphonBridge';
 
 // Helper to convert base64 attachment to File object
 const attachmentToFile = (attachment: Attachment): File => {
@@ -22,6 +21,60 @@ const attachmentToFile = (attachment: Attachment): File => {
   return new File([blob], attachment.name || 'file', { type: attachment.mimeType });
 };
 
+/**
+ * Call Gemini with Grounding (Google Search)
+ * Uses Gemini's native Google Search integration for real-time web search with citations
+ */
+export const callGoogleWithGrounding = async (
+  prompt: string,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal
+): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  // Enable Google Search grounding
+  const groundingTool = { googleSearch: {} };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODELS.FAST, // Use fast model for search queries
+      contents: prompt,
+      config: {
+        tools: [groundingTool]
+      }
+    });
+
+    const text = response.text || '';
+    onChunk(text);
+
+    // Extract and format citations from grounding metadata
+    const candidate = (response as any).candidates?.[0];
+    const metadata = candidate?.groundingMetadata;
+
+    if (metadata?.groundingChunks && metadata.groundingChunks.length > 0) {
+      const sources = metadata.groundingChunks
+        .filter((chunk: any) => chunk.web?.uri && chunk.web?.title)
+        .map((chunk: any) => `- [${chunk.web.title}](${chunk.web.uri})`)
+        .slice(0, 5) // Limit to 5 sources
+        .join('\n');
+
+      if (sources) {
+        const citationBlock = `\n\n---\n**Sources:**\n${sources}`;
+        onChunk(citationBlock);
+        return text + citationBlock;
+      }
+    }
+
+    return text;
+  } catch (e) {
+    const error = e as Error;
+    const errorMsg = `⚠️ Search Error: ${error.message}`;
+    onChunk(errorMsg);
+    return errorMsg;
+  }
+};
+
+
 export const streamResponse = async (
   config: AppConfig,
   history: Message[],
@@ -29,70 +82,6 @@ export const streamResponse = async (
   onChunk: (text: string) => void,
   signal?: AbortSignal
 ) => {
-  // Check if Knowledge Graph mode is enabled
-  if (config.useGraphon) {
-    try {
-      // Get attachments from the last user message
-      const lastUserMsg = history.length > 0 ? history[history.length - 1] : null;
-      const attachments = lastUserMsg?.attachments || [];
-
-      // If there are attachments, ingest them first to build/update the knowledge base
-      if (attachments.length > 0) {
-        onChunk("📤 *Uploading files to Knowledge Graph...*\n\n");
-
-        // Convert attachments to File objects
-        const files = attachments.map(att => attachmentToFile(att));
-
-        try {
-          const ingestResult = await uploadToGraphon(files);
-
-          if (ingestResult.status === 'success' && ingestResult.group_id) {
-            // Store the group_id for future queries (via config update would need state lifting)
-            // For now, we'll use it directly in this query
-            onChunk(`✅ *Knowledge Base Ready!* (${ingestResult.files_processed} files indexed)\n\n`);
-            onChunk("🧠 *Querying Neural Graph...*\n\n");
-
-            // Query with the new group_id
-            const graphonResponse = await queryGraphon(prompt || "Summarize this document", ingestResult.group_id);
-            onChunk(graphonResponse.answer);
-
-            const sourcesText = formatGraphonSources(graphonResponse.sources);
-            if (sourcesText) {
-              onChunk(sourcesText);
-            }
-            return;
-          } else {
-            onChunk(`⚠️ *Ingest Warning: ${ingestResult.message}*\n*Falling back to standard model...*\n\n`);
-          }
-        } catch (ingestError) {
-          const err = ingestError as Error;
-          onChunk(`⚠️ *File Upload Error: ${err.message}*\n*Falling back to standard model...*\n\n`);
-          // Fall through to regular LLM call
-        }
-      } else {
-        // No attachments, just query existing knowledge base
-        onChunk("🧠 *Accessing Neural Graph...*\n\n");
-
-        const graphonResponse = await queryGraphon(prompt, config.graphonGroupId);
-
-        // Stream the Graphon answer
-        onChunk(graphonResponse.answer);
-
-        // Add formatted sources
-        const sourcesText = formatGraphonSources(graphonResponse.sources);
-        if (sourcesText) {
-          onChunk(sourcesText);
-        }
-
-        return; // Knowledge mode complete, don't call regular LLM
-      }
-    } catch (e) {
-      const error = e as Error;
-      onChunk(`\n\n⚠️ *Knowledge Graph Error: ${error.message}*\n*Falling back to standard model...*\n\n`);
-      // Fall through to regular LLM call
-    }
-  }
-
   // Regular LLM routing
   switch (config.provider) {
     case PROVIDERS.OPENAI:
@@ -120,7 +109,7 @@ export const processDocument = async (config: AppConfig, attachment: Attachment)
     CRITICAL: Output ONLY valid JSON in this format:
     {
       "title": "Document Title",
-      "content": "# Extracted Content\n\n..."
+      "content": "# Extracted Content\\n\\n..."
     }
   `;
 
@@ -451,7 +440,7 @@ const callGoogle = async (config: AppConfig, history: Message[], prompt: string,
 
   // Google GenAI iterator does not take signal directly in sendMessageStream types for this SDK wrapper usually,
   // but we can break the loop.
-  const result = await chatSession.sendMessageStream({ message: { parts } });
+  const result = await chatSession.sendMessageStream({ message: parts as any });
 
   // Handle both result.stream (standard) and direct result iteration (some versions)
   const iterable = (result as any).stream || result;

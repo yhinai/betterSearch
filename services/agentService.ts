@@ -1,12 +1,12 @@
 import { DEFAULT_CONFIG, MODELS } from '../constants';
 import { AppConfig, Message } from '../types';
-import { streamResponse } from './llmService';
+import { streamResponse, callGoogleWithGrounding } from './llmService';
 
 // Types for Agent Reasoning
 export interface AgentStep {
     id: string;
     thought: string;
-    action: 'search' | 'graphon' | 'answer';
+    action: 'search' | 'answer';
     query?: string;
     result?: string;
     status: 'pending' | 'executing' | 'completed' | 'failed';
@@ -16,37 +16,6 @@ export interface AgentPlan {
     goal: string;
     steps: AgentStep[];
 }
-
-export interface WebSearchResult {
-    title: string;
-    link: string;
-    snippet: string;
-}
-
-// Tool Implementation
-const searchWeb = async (query: string): Promise<string> => {
-    try {
-        const formData = new FormData();
-        formData.append('query', query);
-        formData.append('max_results', '5');
-
-        const res = await fetch('http://localhost:8001/search', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!res.ok) throw new Error('Search failed');
-
-        const data = await res.json();
-        const results: WebSearchResult[] = data.results;
-
-        if (results.length === 0) return "No relevant results found.";
-
-        return results.map(r => `[${r.title}](${r.link}): ${r.snippet}`).join('\n\n');
-    } catch (e) {
-        return `Search Error: ${(e as Error).message}`;
-    }
-};
 
 // --- Agent Logic ---
 
@@ -65,8 +34,7 @@ export const planResearch = async (
 
     Create a step-by-step plan to answer this goal rigorously.
     Available Tools:
-    - "search": Web search for current info.
-    - "graphon": Query local knowledge base (documents/videos).
+    - "search": Web search for current info using Google Search.
     - "answer": Synthesize final answer (always the last step).
 
     CRITICAL: Output ONLY valid JSON in this format:
@@ -74,8 +42,7 @@ export const planResearch = async (
       "goal": "${goal}",
       "steps": [
         { "id": "1", "action": "search", "query": "search query here", "thought": "reasoning" },
-        { "id": "2", "action": "graphon", "query": "concept to look up", "thought": "checking local docs" },
-        { "id": "3", "action": "answer", "thought": "synthesizing all findings" }
+        { "id": "2", "action": "answer", "thought": "synthesizing all findings" }
       ]
     }
   `;
@@ -107,22 +74,20 @@ export const planResearch = async (
     }
 };
 
+/**
+ * Execute a single step in the research plan.
+ * Search steps now use Gemini's native Google Search grounding for better results and citations.
+ */
 export const executeStep = async (step: AgentStep): Promise<string> => {
     switch (step.action) {
         case 'search':
-            return await searchWeb(step.query || '');
-        case 'graphon':
-            // TODO: Call Graphon Bridge - for now mock or simple fetch if bridge is ready
-            // We can use the fetch directly to localhost:8001/query
-            try {
-                const formData = new FormData();
-                formData.append('query', step.query || '');
-                const res = await fetch('http://localhost:8001/query', { method: 'POST', body: formData });
-                const data = await res.json();
-                return `Graphon Answer: ${data.answer}\nSources: ${JSON.stringify(data.sources)}`;
-            } catch (e) {
-                return "Graphon query failed.";
-            }
+            // Use Gemini with Google Search grounding
+            let result = '';
+            await callGoogleWithGrounding(
+                step.query || '',
+                (chunk) => { result += chunk; }
+            );
+            return result;
         case 'answer':
             return "Ready to synthesize.";
         default:

@@ -36,8 +36,7 @@ export interface AppConfig {
   model: string;
   mode: 'direct' | 'socratic';
   systemInstruction?: string;
-  useGraphon?: boolean;  // Enable Knowledge Graph mode
-  graphonGroupId?: string;  // Active Graphon group ID
+
   isDeepResearch?: boolean;
 }
 

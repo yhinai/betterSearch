@@ -504,7 +504,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => 
           toggleTheme,
           clearChat: () => handleNewSession(), // Start new session effectively clears current view
           toggleSocratic: toggleMode,
-          toggleGraphon: () => setConfig(prev => ({ ...prev, useGraphon: !prev.useGraphon })),
           toggleDeepResearch: () => setConfig(prev => ({ ...prev, isDeepResearch: !prev.isDeepResearch })),
           openSettings: () => setShowSettings(true),
           openHive: () => setShowHive(true),

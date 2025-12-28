@@ -1,13 +1,53 @@
+/**
+ * Database Service - Dexie IndexedDB wrapper
+ * Handles all local storage operations for chats, messages, notes, and syllabus
+ */
 
-import { db, User, SyllabusData } from './db';
-import { Message, ChatSession, Note, HiveTransmission } from '../types';
+import Dexie, { Table } from 'dexie';
+import { ChatSession, Message, Note, HiveTransmission } from '../types';
 
-// Ensure DB is open
+// --- Database Schema ---
+
+export interface User {
+  username: string;
+  lastLogin: number;
+}
+
+export interface SyllabusData {
+  id: string;
+  content: string;
+  noteCount: number;
+  timestamp: number;
+  username: string;
+}
+
+class BetterSearchDB extends Dexie {
+  chats!: Table<ChatSession>;
+  messages!: Table<Message>;
+  notes!: Table<Note>;
+  syllabus!: Table<SyllabusData>;
+  hive_transmissions!: Table<HiveTransmission>;
+  users!: Table<User>;
+
+  constructor() {
+    super('betterSearch_db');
+    this.version(1).stores({
+      chats: 'id, username, timestamp',
+      messages: 'id, chatId, role, timestamp',
+      notes: 'id, username, title',
+      syllabus: 'id, username',
+      hive_transmissions: 'id, recipient, timestamp',
+      users: 'username'
+    });
+  }
+}
+
+const db = new BetterSearchDB();
 if (!db.isOpen()) {
   db.open().catch(err => console.error("Failed to open db", err));
 }
 
-// --- USER MANAGEMENT ---
+// --- User Management ---
 
 export const ensureUserExists = async (username: string) => {
   try {
@@ -24,23 +64,17 @@ export const ensureUserExists = async (username: string) => {
 
 export const checkUserExists = async (username: string): Promise<boolean> => {
   try {
-    const user = await db.users.get(username);
-    return !!user;
+    return !!(await db.users.get(username));
   } catch (e) {
     return false;
   }
 };
 
+// --- Chat Operations ---
+
 export const createChatSession = async (username: string, title: string = 'New Session'): Promise<ChatSession> => {
   const id = Date.now().toString();
-  const timestamp = Date.now();
-  const session: ChatSession = { id, title, timestamp };
-  // We need to add username to the session object if we want to query by it easily in Dexie 
-  // without a separate index or if we strictly follow the interface. 
-  // The interface in types.ts doesn't have username, but the DB schema does. 
-  // We will verify types.ts compatibility. For now, we assume we can pass extra props or update type.
-  // Actually, checking db.ts schema: 'chats: id, username, timestamp'.
-  // Dexie add expects object matching schema.
+  const session: ChatSession = { id, title, timestamp: Date.now() };
   await db.chats.add({ ...session, username } as any);
   return session;
 };
@@ -88,7 +122,7 @@ export const deleteChatSession = async (chatId: string) => {
   }
 };
 
-// --- NOTES OPERATIONS ---
+// --- Notes Operations ---
 
 export const saveNote = async (note: Note, username: string) => {
   try {
@@ -117,8 +151,6 @@ export const deleteNote = async (id: string) => {
 export const searchNotes = async (username: string, query: string): Promise<Note[]> => {
   try {
     const lowerQ = query.toLowerCase();
-    // Dexie doesn't have full text search built-in, so we filter in memory after fetching user's notes
-    // For large datasets, we'd use an optimized search index, but for local notes this is fine.
     const allNotes = await getNotes(username);
     return allNotes.filter(n =>
       n.title.toLowerCase().includes(lowerQ) ||
@@ -129,13 +161,12 @@ export const searchNotes = async (username: string, query: string): Promise<Note
   }
 };
 
-// --- HIVE TRANSMISSION OPERATIONS ---
+// --- Hive Transmission Operations ---
 
 export const sendHiveNote = async (note: Note, sender: string, recipient: string) => {
   try {
-    const id = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const tx: HiveTransmission = {
-      id,
+      id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       title: note.title,
       content: note.content,
       sender,
@@ -165,13 +196,12 @@ export const deleteHiveTransmission = async (id: string) => {
   }
 };
 
-// --- SYLLABUS OPERATIONS ---
+// --- Syllabus Operations ---
 
 export const saveSyllabus = async (content: string, noteCount: number, username: string) => {
   try {
-    const id = `syllabus_${username}`;
     await db.syllabus.put({
-      id,
+      id: `syllabus_${username}`,
       content,
       noteCount,
       timestamp: Date.now(),
@@ -184,38 +214,31 @@ export const saveSyllabus = async (content: string, noteCount: number, username:
 
 export const getSyllabus = async (username: string): Promise<{ content: string, noteCount: number, timestamp: number } | null> => {
   try {
-    const id = `syllabus_${username}`;
-    const result = await db.syllabus.get(id);
-    return result || null;
+    return (await db.syllabus.get(`syllabus_${username}`)) || null;
   } catch (e) {
     return null;
   }
 };
 
-// --- BACKUP & RESTORE FUNCTIONS ---
+// --- Backup & Restore ---
 
 export const exportBackup = async (username: string) => {
   try {
     const chats = await db.chats.where('username').equals(username).toArray();
-    const chatIds = chats.map(c => c.id);
-
-    // Dexie 'anyOf' is useful here
-    const messages = await db.messages.where('chatId').anyOf(chatIds).toArray();
-
+    const messages = await db.messages.where('chatId').anyOf(chats.map(c => c.id)).toArray();
     const notes = await db.notes.where('username').equals(username).toArray();
     const syllabus = await db.syllabus.where('username').equals(username).toArray();
 
-    const data = {
-      version: 5, // Bump version for Dexie migration
+    const blob = new Blob([JSON.stringify({
+      version: 5,
       timestamp: Date.now(),
       username,
       chats,
       messages,
       notes,
       syllabus
-    };
+    }, null, 2)], { type: 'application/json' });
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -237,51 +260,27 @@ export const importBackup = async (file: File, currentUsername: string): Promise
     reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-        const targetUser = currentUsername;
 
         await db.transaction('rw', db.chats, db.messages, db.notes, db.syllabus, async () => {
-          // Clear existing data for this user
-          await db.chats.where('username').equals(targetUser).delete();
-          await db.notes.where('username').equals(targetUser).delete();
-
-          // We need to delete messages for old chats too.
-          // Complex without cascading deletes, but we can assume fresh start or just leave orphans.
-          // For better cleanup, we could fetch old chat IDs first, but let's stick to simple logic:
-          // Just insert new data.
-          // Actually, let's delete syllabus too
-          await db.syllabus.where('username').equals(targetUser).delete();
+          await db.chats.where('username').equals(currentUsername).delete();
+          await db.notes.where('username').equals(currentUsername).delete();
+          await db.syllabus.where('username').equals(currentUsername).delete();
 
           if (json.chats) {
-            for (const c of json.chats) {
-              await db.chats.put({ ...c, username: targetUser });
-            }
+            for (const c of json.chats) await db.chats.put({ ...c, username: currentUsername });
           }
-
           if (json.messages) {
-            // We must ensure we don't insert messages for chats that don't belong to us?
-            // But we just inserted chats for us.
-            // However, messages from backup might duplicate existing IDs if we didn't clear them adequately.
-            // 'put' handles duplicates.
-            for (const m of json.messages) {
-              // Dexie handles object storage, ensuring attachments are kept as objects if they are already objects in JSON
-              await db.messages.put(m);
-            }
+            for (const m of json.messages) await db.messages.put(m);
           }
-
           if (json.notes) {
-            for (const n of json.notes) {
-              await db.notes.put({ ...n, username: targetUser });
-            }
+            for (const n of json.notes) await db.notes.put({ ...n, username: currentUsername });
           }
-
           if (json.syllabus) {
             for (const s of json.syllabus) {
-              const sylId = `syllabus_${targetUser}`;
-              await db.syllabus.put({ ...s, id: sylId, username: targetUser });
+              await db.syllabus.put({ ...s, id: `syllabus_${currentUsername}`, username: currentUsername });
             }
           }
         });
-
         resolve(true);
       } catch (err) {
         console.error("Import failed", err);
